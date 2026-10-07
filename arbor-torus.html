@@ -412,13 +412,13 @@ void main(){vec2 uv=vU,dv=(vU-uL)*(0.9/48.);float ill=1.;vec3 s=vec3(0.);
   for(int i=0;i<48;i++){uv-=dv;s+=max(texture(uT,uv).rgb-0.035,0.)*ill;ill*=0.955;}   // only bright light scatters
   o=vec4(s/48.,1.);}`;
 const COMP_FS=`#version 300 es
-precision highp float;in vec2 vU;uniform sampler2D uS,uB,uSh;uniform float uBS,uEx,uShS,uFilm,uTime;out vec4 o;
+precision highp float;in vec2 vU;uniform sampler2D uS,uB,uSh;uniform float uBS,uEx,uShS,uFilm,uTime,uFade;out vec4 o;
 void main(){vec2 q=vU-0.5,ca=q*0.004*uFilm;                                   // faint chromatic fringe toward the edges
   vec3 s=vec3(texture(uS,vU-ca).r,texture(uS,vU).g,texture(uS,vU+ca).b);
   vec3 bl=vec3(texture(uB,vU-ca*2.).r,texture(uB,vU).g,texture(uB,vU+ca*2.).b);
   vec3 c=s+bl*uBS+texture(uSh,vU).rgb*uShS;
   c=1.-exp(-c*uEx);                                                   // filmic roll-off: hot cores go white, never clip
-  c*=1.-0.35*dot(q,q);
+  c*=(1.-0.35*dot(q,q))*uFade;                                         // (the piece fades up from black)
   float n=fract(sin(dot(gl_FragCoord.xy+fract(uTime*7.31)*vec2(113.1,71.7),vec2(12.9898,78.233)))*43758.5453);
   c+=(n-0.5)*0.05*uFilm*(0.3+c);                                       // film grain, a little stronger in the light
   c+=(fract(52.9829189*fract(dot(gl_FragCoord.xy,vec2(0.06711056,0.00583715))))-0.5)/255.;   // dither: no banding in the glow
@@ -1008,7 +1008,12 @@ const MIN_SCALE=.3,MAX_SCALE=300;   // far enough in to fill the frame with the 
 let rxU=0,ry=HOME_VIEW.azimuth,rz=0,yaw=0,scale=HOME_VIEW.scale,zoomF=1,camFit=1,sceneFit=1,Scam=1;
 const Rm=[1,0,0,0,1,0,0,0,1];
 const RX_TREE=0.05;          // nearly side-on for the tree; the completed view opens low over the water
-function camera(t){
+// The prologue: before anything grows, a held shot of the boat alone on the water, looking past it toward the place the
+// stem will rise. The hold lasts PRO seconds; then the shot gives way to the camera above.
+const PRO=4,OPEN={elev:.022,side:-.035,width:.36,cx:.47,cy:.64,push:.035,out:8};
+let proT=PRO,opening=false;
+function openingWeight(){if(!opening||!$('auto').checked)return 0;return proT<PRO?1:1-sm(globalT()/OPEN.out);}
+function camera(t,allowOpening=true){
   sceneFit=fitTree*Math.pow(KZ,t);
   zoomF=G<M?Math.pow(ZG,1-G/M):1;
   camFit=sceneFit/zoomF;
@@ -1023,10 +1028,22 @@ function camera(t){
   const minRx=Math.asin(Math.max(-1,Math.min(1,(floorY+0.004*sceneFit)/dist)));
   const rx=Math.max(minRx,Math.min(1.45,base+rxU));rxU=rx-base;
   // world → camera: turn about the vertical axis (horizon stays level), then elevation, then roll
-  const yw=yaw+ry,cw=Math.cos(yw),sw=Math.sin(yw),cx=Math.cos(rx),sx=Math.sin(rx),cz=Math.cos(rz),sz=Math.sin(rz);
+  const ow=allowOpening&&!boat.dirty?openingWeight():0;
+  let yw=yaw+ry,rxE=rx;
+  if(ow>0){       // the opening looks along the line from the boat to the seed, turned a little so the stem rises beside him
+    const oy=Math.atan2(-boat.pos[0],boat.pos[1])+OPEN.side,d=oy-yw;
+    yw+=(d-TAU*Math.floor((d+Math.PI)/TAU))*ow;rxE=lerp(rx,Math.max(minRx,OPEN.elev),ow);}
+  const cw=Math.cos(yw),sw=Math.sin(yw),cx=Math.cos(rxE),sx=Math.sin(rxE),cz=Math.cos(rz),sz=Math.sin(rz);
   const Ry=[cw,0,sw, 0,1,0, -sw,0,cw],Rx=[1,0,0, 0,cx,-sx, 0,sx,cx],Rz=[cz,-sz,0, sz,cz,0, 0,0,1];
   const mul=(A,B)=>{const C=new Array(9);for(let r=0;r<3;r++)for(let c=0;c<3;c++)C[r*3+c]=A[r*3]*B[c]+A[r*3+1]*B[3+c]+A[r*3+2]*B[6+c];return C;};
   const R_=mul(Rz,mul(Rx,Ry));for(let i=0;i<9;i++)Rm[i]=R_[i];
+  if(ow>0){       // frame the boat: about a third of the frame wide, low in the frame, the lens creeping in through the hold
+    const L=boat.L,c=[boat.pos[0],.15*L,boat.pos[1]];
+    const X=Rm[0]*c[0]+Rm[1]*c[1]+Rm[2]*c[2],Y=Rm[3]*c[0]+Rm[4]*c[1]+Rm[5]*c[2],Z=Rm[6]*c[0]+Rm[7]*c[1]+Rm[8]*c[2];
+    const k=camF/Math.max(.5,camF-Z/sceneFit),push=1+OPEN.push*sm(Math.min(proT,PRO+2)/(PRO+2));
+    const So=OPEN.width*Math.min(CW,1.6*CH)/(L*k)*push;
+    Scam=Math.exp(lerp(Math.log(Scam),Math.log(So),ow));
+    ctrX=lerp(ctrX,OPEN.cx-X*Scam*k/CW,ow);ctrY=lerp(ctrY,OPEN.cy+Y*Scam*k/CH,ow);}
 }
 function projCPU(x,y,z){const X=Rm[0]*x+Rm[1]*y+Rm[2]*z,Y=Rm[3]*x+Rm[4]*y+Rm[5]*z,Z=Rm[6]*x+Rm[7]*y+Rm[8]*z;
   const k=camF/Math.max(0.5,camF-Z/sceneFit);return [CW*ctrX+X*Scam*k,CH*ctrY-Y*Scam*k];}
@@ -1284,7 +1301,7 @@ function traceWater(sx,sy){
   const Ec=[0,0,camF*sceneFit],E=T(Ec),d=T([(sx-CW*ctrX)/Scam,-(sy-CH*ctrY)/Scam,-Ec[2]]);
   if(d[1]>=-1e-9)return null;const l=(floorY-E[1])/d[1];return [E[0]+d[0]*l,E[2]+d[2]*l];}
 function placeBoat(){        // a gently oblique passage, with open water between the dinghy and the torus
-  const keep={G,rxU,ry,rz,yaw,scale};G=M;rxU=0.26-HOME_VIEW.elevation;ry=0;rz=0;yaw=0;scale=1.35;camera(1);
+  const keep={G,rxU,ry,rz,yaw,scale};G=M;rxU=0.26-HOME_VIEW.elevation;ry=0;rz=0;yaw=0;scale=1.35;camera(1,false);
   // Anchor the approved route in its original lens, independently of the home composition.
   Scam=Math.min(CW,CH)*0.4*scale/camFit;ctrX=0.5;ctrY=0.5;
   const A=traceWater(CW*0.7,CH*1.05),B=traceWater(CW*1.04,CH*0.65);
@@ -2244,7 +2261,7 @@ function render(clock){
   gl.activeTexture(gl.TEXTURE2);gl.bindTexture(gl.TEXTURE_2D,shaft.t);gl.uniform1i(P_COMP.u.uSh,2);
   const study=+$('lighting').value>0?sm((t-0.55)/0.43):0;
   gl.uniform1f(P_COMP.u.uBS,lerp(0.16,0.14,study)*(+$('glow').value));gl.uniform1f(P_COMP.u.uEx,lerp(1.35,1.32,study));
-  gl.uniform1f(P_COMP.u.uShS,lerp(0.3,0.23,study)*(+$('shafts').value));gl.uniform1f(P_COMP.u.uFilm,+$('film').value);gl.uniform1f(P_COMP.u.uTime,clock);
+  gl.uniform1f(P_COMP.u.uShS,lerp(0.3,0.23,study)*(+$('shafts').value));gl.uniform1f(P_COMP.u.uFade,opening&&$('auto').checked?sm(proT/1.4):1);gl.uniform1f(P_COMP.u.uFilm,+$('film').value);gl.uniform1f(P_COMP.u.uTime,clock);
   gl.drawArrays(gl.TRIANGLES,0,3);gl.activeTexture(gl.TEXTURE0);
 }
 
@@ -2259,7 +2276,10 @@ const globalT=()=>ph===0?pt:ph===1?12+pt:T_TOUCH+pt;
 let ph=0,pt=0,G=0,t=0;
 function updateTimeline(dt){
   let cap;
-  if($('auto').checked){
+  if($('auto').checked&&proT<PRO){         // the prologue: nothing has begun yet
+    proT+=dt;G=0;t=0;mistIn=0;$('morph').value=0;cap='Prologue';
+  }else if($('auto').checked){
+    if(proT<PRO+3)proT+=dt;              // (kept running a little past the hold, for the lens's last creep)
     pt+=dt;while(pt>phases[ph][1]){pt-=phases[ph][1];ph++;}
     const Tg=globalT();
     G=M*prof((Tg-VOID)/(12-VOID),0.3);   // growth slows over exactly the stretch in which the sag gathers: an even pace
@@ -2321,7 +2341,7 @@ function startRec(){
   rec=new MediaRecorder(cv.captureStream(30),{mimeType:recMime,videoBitsPerSecond:20e6});recChunks=[];
   rec.ondataavailable=e=>{if(e.data&&e.data.size)recChunks.push(e.data);};
   rec.onstop=()=>{download(new Blob(recChunks,{type:recMime}),'arbor-torus.'+(recMime.includes('mp4')?'mp4':'webm'));rec=null;$('record').textContent='Record';};
-  $('auto').checked=true;ph=0;pt=0;G=0;t=0;boatEpoch=clock;resetBoatFloat();resetFlow();   // record the whole piece from the seed
+  $('auto').checked=true;ph=0;pt=0;G=0;t=0;proT=0;opening=true;boatEpoch=clock+PRO;resetBoatFloat();resetFlow();   // record the whole piece from the prologue
   rec.start(500);$('record').textContent='Stop';
 }
 function stopRec(){if(rec&&rec.state!=='inactive')rec.stop();}
@@ -2369,11 +2389,11 @@ const endPinch=()=>{pinch=0;pinchCenter=null;drag=null;};
 cv.addEventListener('touchend',endPinch);cv.addEventListener('touchcancel',endPinch);
 cv.addEventListener('pointercancel',()=>drag=null);
 $('scale').oninput=e=>{const r=cv.getBoundingClientRect();zoomAt(Math.exp(+e.target.value),r.left+r.width/2,r.top+r.height/2);};
-$('morph').oninput=e=>{$('auto').checked=false;t=+e.target.value;G=M;};
+$('morph').oninput=e=>{$('auto').checked=false;opening=false;proT=PRO;t=+e.target.value;G=M;};
 $('auto').onchange=e=>{if(e.target.checked){G=M;ph=1;pt=Math.max(0,T_BEND+(T_TOUCH-T_BEND)*t-12);}};
 ['depth','mer','spread','ratio','vari','twist'].forEach(id=>$(id).oninput=buildTree);
 $('sound').onchange=e=>snd.set(e.target.checked);
-$('regrow').onclick=()=>{$('auto').checked=true;ph=0;pt=0;G=0;t=0;boatEpoch=clock;resetBoatFloat();resetFlow();};
+$('regrow').onclick=()=>{$('auto').checked=true;ph=0;pt=0;G=0;t=0;proT=0;opening=true;boatEpoch=clock+PRO;resetBoatFloat();resetFlow();};
 $('lighting').onchange=wake;
 $('reseed').onclick=()=>{seed++;buildTree();};
 $('reset').onclick=()=>{rxU=0;ry=HOME_VIEW.azimuth;rz=0;yaw=0;scale=HOME_VIEW.scale;viewPanX=0;viewPanY=0;$('scale').value=Math.log(scale);camera(t);};
@@ -2397,6 +2417,7 @@ function prepare(){
   camera(t);buildPoints();updateBoat();camera(t);
 }
 buildTree();
+proT=0;opening=true;boatEpoch=PRO;
 let last=performance.now(),clock=0,artVisible=true,frameDeadline=0;
 if(typeof IntersectionObserver!=='undefined')new IntersectionObserver(entries=>{artVisible=entries[0].isIntersecting;},{threshold:0}).observe(cv);
 function frame(now){
