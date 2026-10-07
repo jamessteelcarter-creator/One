@@ -2547,10 +2547,13 @@ function render(clock){
       const draw=(mode,k,q,fr,rad,a)=>{gl.uniform1i(u.uMode,mode);gl.uniform1i(u.uK,k);gl.uniform1i(u.uNk,nSeg[k]);gl.uniform1i(u.uOff0,flowOff[k]);
         gl.uniform1i(u.uQ,q);gl.uniform1f(u.uFr,fr);gl.uniform1f(u.uRad,rad);gl.uniform1f(u.uA,a);gl.drawArrays(gl.POINTS,0,1<<k);};
       const hs=headState();
-      if(hs){if(hs.k>=1&&hs.x<.30+hs.spread){const pk=hs.k-1;                                     // the forks ring out as the light divides,
-          const segPx=nodeL[0][0]*Scam,Rf=Math.max(.9,Math.min(14,.16*nSeg[pk]*segPx/dpr))*dpr;       // each as large as its branch is long
-          gl.uniform1f(u.uX,hs.x);gl.uniform1f(u.uSpread,hs.spread);const gt=sm((hs.k-5)/4);gl.uniform1f(u.uGlint,gt);
-          draw(2,pk,0,0,Rf,.55*lerp(Math.min(1,Math.pow(2,(5-hs.k)/2.6)),.9,gt)*growthLight());}}
+      // the forks ring out as the light divides, each as large as its branch is long; late on, the last of one
+      // generation's glints run on into the next beat, so the glitter never pauses between them
+      const flash=(kk,X)=>{const pk=kk-1,sp=flashSpread(kk),gt=sm((kk-5)/4);if(pk<0||X>=sp+lerp(.30,.18,gt))return;
+        const Rf=Math.max(.9,Math.min(14,.16*nSeg[pk]*nodeL[0][0]*Scam/dpr))*dpr;
+        gl.uniform1f(u.uX,X);gl.uniform1f(u.uSpread,sp);gl.uniform1f(u.uGlint,gt);
+        draw(2,pk,0,0,Rf,.55*lerp(Math.min(1,Math.pow(2,(5-kk)/2.6)),.9,gt)*growthLight());};
+      if(hs){flash(hs.k,hs.x);flash(hs.k-1,hs.x+1);}
       else for(let k=1;k<=D;k++){const uu=(G-pStart[k])/3;if(uu<0||uu>=1)continue;           // each division flashes
         draw(1,k-1,0,0,(1.5+10*uu)*dpr,0.28*(1-uu)*Math.min(1,Math.pow(2,8-k))*growthLight());}
       if(G>0.02||hs){const x=Math.min(M-1e-3,Math.max(G,.01)),k=lev[x|0],qf=x-pStart[k],q0=Math.floor(qf);  // and the growing tips glow: the heads of light
@@ -2648,9 +2651,10 @@ function growthLight(){return $('auto').checked?1-canopyFade():0;}
 // Its brightness keeps one ladder: full only as it leaves the water and at each fork; half while it travels; behind
 // it, its trace cools to the structure's own steady glow.
 const headCap=k=>Math.min(1,Math.pow(2,(5-k)/1.6));
+const flashSpread=k=>k<=3?0:Math.min(1,(k-3)/7);     // from the fourth fork the flashes scatter, by the tenth across the whole beat
 function headState(){if(!opening||!$('auto').checked||proT<PRO)return null;const e=emergenceClock,[k,x]=beatAt(e);if(k>D)return null;
-  const spread=k<=3?0:Math.min(.75,(k-3)*.12);                                        // from the fourth fork the flashes scatter
-  const hb=k===0?.45+.55*Math.exp(-e/.6):.45+.55*Math.exp(-x*6.5)*(1-spread/.75);return {k,x,hb,cap:headCap(k),spread};}
+  const spread=flashSpread(k);
+  const hb=k===0?.45+.55*Math.exp(-e/.6):.45+.55*Math.exp(-x*6.5)*(1-Math.min(1,spread/.75));return {k,x,hb,cap:headCap(k),spread};}
 function headAmp(){const h=headState();return h?1.25*h.hb*h.cap:0;}
 function updateTimeline(dt){
   let cap;
