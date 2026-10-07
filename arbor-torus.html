@@ -1108,7 +1108,7 @@ void main(){vec3 N=aN,m=aP;vModel=m;
   vec3 q=proj(p);
   vec3 Ld=normalize(uLP-p),V=normalize(uEye-p),lc=vec3(0.32,1.,0.55);
   float df=max(0.,dot(N,Ld)),rim=pow(1.-abs(dot(N,V)),2.5)*smoothstep(-0.25,0.6,dot(N,Ld));
-  vC=aA*(0.04+3.2*df)*lc+lc*0.55*rim;if(uRefl>0.5)vC*=0.45;
+  vC=aA*(0.04+3.2*df)*lc+lc*0.55*rim;if(aMat==13.)vC=vec3(1.,.5,.16)*.9;if(uRefl>0.5)vC*=0.45;
   vP=p;vN=N;vA=aA;vU=aU;vMat=aMat;
   gl_Position=toClip(q.xy);
   float depth=max(0.5,uF-q.z/uPF);gl_Position=vec4(gl_Position.xy*depth,depth-1.,depth);}`;
@@ -1148,7 +1148,7 @@ float shadowAt(vec3 P,vec3 N,vec3 L){
   return mix(near,sum/12.,.55);}`;
 const BOAT_FS=`#version 300 es
 precision highp float;
-in vec3 vC,vP,vN,vA,vModel;in vec4 vU;flat in float vMat;uniform vec3 uLP,uEye,uEyeC;uniform float uDetail,uRefl,uBoatSize,uBlink,uTime;uniform vec2 uGaze;uniform vec4 uLidShape;uniform sampler2D uSkinA,uSkinN,uSkinS;uniform float uSkinReady;uniform vec3 uHatO,uHatUp;uniform vec2 uHatR;out vec4 o;
+in vec3 vC,vP,vN,vA,vModel;in vec4 vU;flat in float vMat;uniform vec3 uLP,uEye,uEyeC,uFlame,uEyeF;uniform vec2 uFlameS;uniform float uFlick;uniform float uDetail,uRefl,uBoatSize,uBlink,uTime;uniform vec2 uGaze;uniform vec4 uLidShape;uniform sampler2D uSkinA,uSkinN,uSkinS;uniform float uSkinReady;uniform vec3 uHatO,uHatUp;uniform vec2 uHatR;out vec4 o;
 ${NOISE_GLSL}
 ${LIGHT_GLSL}
 vec3 surfaceBump(vec3 n,float h){
@@ -1159,7 +1159,7 @@ void main(){if(vP.y<0.)discard;
   vec3 N=normalize(vN),L=normalize(uLP-vP),V=normalize(uEye-vP);
   vec3 m=vModel;
   float fp=max(length(dFdx(m)),length(dFdy(m)));        // model units per pixel: fine detail fades in only where it can be seen
-  vec3 alb=vA;float rough=.55,f0=.04,spec2=0.,ao=vU.z,sss=0.,clear=0.,metal=0.,sheen=0.;vec3 extra=vec3(0.);
+  vec3 alb=vA;float rough=.55,f0=.04,spec2=0.,ao=vU.z,sss=0.,clear=0.,metal=0.,sheen=0.;vec3 extra=vec3(0.),emit=vec3(0.);
   int mat=int(vMat+.5);
   if(mat==2){
     // skin: pores, fine lines and set wrinkles; ruddy, weathered colour; oilier across the brow and nose
@@ -1265,6 +1265,20 @@ void main(){if(vP.y<0.)discard;
     rough=.9;f0=.03;sheen=1.;
   }else if(mat==8){metal=1.;alb=vec3(.42,.28,.13)*(1.-.5*fbm(m*900.));rough=.38+.2*fbm(m*300.);
   }else if(mat==9){rough=.55;alb*=1.+.3*(fbm(m*700.)-.5);
+  }else if(mat==12){
+    // old tinplate: the plating worn dull, rust in the seams and low down, soot about the cap
+    float rh=(m.y-0.232)*290.,rust=smoothstep(.55,.85,fbm(m*240.)+.22*(1.-smoothstep(0.,2.5,rh))),soot=smoothstep(17.5,20.5,rh)*.85;
+    metal=.85*(1.-rust)*(1.-soot);alb=mix(vec3(.30,.29,.27)*(.88+.24*fbm(m*900.)),vec3(.12,.062,.03),rust);alb=mix(alb,vec3(.025),soot);
+    rough=mix(.42,.9,max(rust,soot));
+  }else if(mat==13){
+    // the globe: thin glass, sooted toward the top, and through it the flame, found along the line of sight
+    vec3 D=normalize(vP-uEyeF),o=uEyeF+D*dot(uFlame-uEyeF,D)-uFlame;
+    float fy=o.y/uFlameS.y,wob=.08*sin(uTime*9.+fy*3.)*uFlick,w=uFlameS.x*(1.-.55*smoothstep(-.2,1.,fy))*(.9+.2*uFlick);
+    float r2=pow((length(o.xz)-wob*uFlameS.x)/w,2.)+pow(fy/(fy>0.?1.+.25*(uFlick-1.):.55),2.);
+    float core=exp(-r2*2.2),halo=exp(-r2*.25);
+    emit=uFlick*(vec3(1.,.72,.38)*9.*core+vec3(1.,.42,.10)*.8*halo);
+    float gh=(m.y-.232)*290.;emit+=uFlick*vec3(1.,.45,.13)*.10*exp(-pow((gh-9.)/5.,2.));     // the glass itself, warmed by the flame
+    emit*=1.-.75*smoothstep(15.,17.5,gh);alb=vec3(.010);rough=.06;f0=.04;
   }
   vec3 Nl=N;
   float nl=dot(N,L),sh=shadowAt(vP,N,L);
@@ -1285,6 +1299,7 @@ void main(){if(vP.y<0.)discard;
   if(mat==4){vec3 R=reflect(-V,N);col+=LC*(2.6*pow(max(0.,dot(R,L)),900.)+.25*pow(max(0.,dot(R,L)),40.))*ao*sh;}
   if(mat==2||mat==10)col+=alb*LC*.9*pow(max(0.,dot(-N,L)),2.)*vec3(1.,.55,.45)*sh;   // thin skin glows when lit from behind
   if(sheen>0.){float g=1.-max(0.,dot(N,V));col+=alb*(LC*4.8*sh*.8*pow(g,5.)*max(0.,nl+.25)+fill(N)*.45*pow(g,3.));}
+  col+=emit;
   vec3 closeC=col;
   if(uRefl>0.5)closeC*=0.45;
   o=vec4(mix(vC,closeC,uDetail),1.);}`;
@@ -1821,7 +1836,8 @@ const MAT={
   SHOE:{color:[.032,.021,.014],type:5},SOLE:{color:[.018,.016,.015],type:5},NAIL:{color:[.23,.155,.12],type:5},
   OAR:{color:[.105,.075,.046],type:7},LEATHER:{color:[.12,.075,.045],type:9},METAL:{color:[.4,.28,.13],type:8},
   PAINT:{color:[.060,.044,.030],type:0},WOOD:{color:[.088,.056,.032],type:7},RAIL:{color:[.072,.046,.027],type:7},
-  FLOOR:{color:[.066,.046,.029],type:7},SEAT:{color:[.092,.061,.036],type:7},TRANSOM:{color:[.10,.056,.030],type:7}};
+  FLOOR:{color:[.066,.046,.029],type:7},SEAT:{color:[.092,.061,.036],type:7},TRANSOM:{color:[.10,.056,.030],type:7},
+  TIN:{color:[.20,.19,.18],type:12},GLASS:{color:[.02,.02,.02],type:13}};
 const hullSheer=x=>.15+.06*Math.pow(2*x,2)+.03*Math.pow(Math.max(0,2*x),2);
 const hullBeam=x=>.215*Math.sqrt(Math.max(.00005,1-Math.pow((x+.055)/.555,2)));
 function buildFigure(lod){
@@ -1922,7 +1938,39 @@ function buildHull(hiD){
     S.slab([.496,sh(.496)-.0015,0],[.40,sh(.40)-.0015,b(.40)-.009],[.40,sh(.40)-.0015,-(b(.40)-.009)],.005,M_.WOOD);         // breasthook
   }
   S.ellipsoid([.01,.116,0],[.054,.035,.068],M_.PANTS);
+  buildLantern(S,hiD);
   return meshPacket(tris,1);}
+/* A hurricane lantern of the old kind hangs at the stern, in front of him, from a crooked pole stepped in the
+   stern seat: a squat tinplate fount, a brass burner, a pear-shaped glass globe in a wire guard, the two air
+   tubes that carry the draught up its sides to the vented cap, and a wire bail with a wooden grip. It hangs
+   above the gunwale, so it shows from low over the water. Measured in centimetres, in boat lengths of 290. */
+const LANT={x:-.425,y:.232,z:0,k:1/290,flameH:8.1,flameR:[.55,1.45]};
+const lanternPoint=h=>[LANT.x,LANT.y+h*LANT.k,LANT.z];
+function buildLantern(S,hiD){
+  const k=LANT.k,X=LANT.x,Y=LANT.y,Z=LANT.z,n=hiD?22:10,TIN=MAT.TIN,BR=MAT.METAL;
+  const P=(r,h,a)=>[X+r*k*Math.cos(a),Y+h*k,Z+r*k*Math.sin(a)];
+  const cr=(pts,u)=>{const f=clamp01(u)*(pts.length-1),i=Math.min(pts.length-2,Math.floor(f)),t=f-i,g=j=>pts[Math.max(0,Math.min(pts.length-1,j))];
+    const a=g(i-1),b=g(i),c=g(i+1),d=g(i+2);return [0,1].map(e=>.5*(2*b[e]+(-a[e]+c[e])*t+(2*a[e]-5*b[e]+4*c[e]-d[e])*t*t+(-a[e]+3*b[e]-3*c[e]+d[e])*t*t*t));};
+  const rev=(pts,nu,mat,hc)=>S.surface((u,v)=>{const [r,h]=cr(pts,u);return P(Math.max(0,r),h,TAU*v);},hiD?nu:Math.max(3,nu>>1),n,mat,()=>P(0,hc,0));
+  rev([[0,0],[4,0],[5.8,.15],[6.4,.8],[6.55,2],[6.4,3.4],[5.6,4.3],[4,4.75],[2.7,4.85]],14,TIN,2.4);                    // the fount
+  rev([[2.6,4.8],[2.7,5.4],[2.6,6.0],[3.1,6.3],[3.2,6.5],[2.0,6.65],[0,6.7]],8,BR,5.5);                                  // the burner
+  rev([[3.0,6.4],[3.9,7.5],[4.6,10.5],[4.2,13.5],[3.0,16.5],[2.6,18.2]],hiD?16:6,MAT.GLASS,12);                         // the globe
+  rev([[2.4,17.6],[4.4,18.0],[4.6,18.5],[3.6,20.0],[2.4,21.0],[2.3,22.3],[2.8,22.5],[2.7,23.0],[1.2,23.6],[0,23.8]],14,TIN,20);   // the cap
+  const a0=-.5;S.tube(P(2.6,5.5,a0),P(4.0,5.5,a0),.25*k,.25*k,BR);S.ellipsoid(P(4.2,5.5,a0),[.7*k,.7*k,.7*k],BR,null,4,8);   // the wick's knob
+  const sv=S.radial;S.radial=hiD?8:5;
+  for(const a of [Math.PI/2,-Math.PI/2])S.curveTube(u=>{const [r,h]=cr([[5.6,4.2],[6.0,8],[5.8,14],[4.7,18.4],[3.8,19.4]],u);return P(r,h,a);},.55*k,TIN,hiD?16:6);   // the air tubes
+  if(hiD){
+    for(const a of [Math.PI/4,3*Math.PI/4,5*Math.PI/4,7*Math.PI/4])S.curveTube(u=>{const h=6.6+10.8*u;return P(3.7+1.6*Math.sin(Math.PI*u),h,a);},.13*k,TIN,12,4);   // the guard
+    S.curveTube(u=>P(5.25,11.3,TAU*u),.13*k,TIN,32,4);
+    // the bail, upright on the hook, and its grip
+    const fold=0,arc=u=>{const th=Math.PI*u,s=7.2*Math.sin(th);return [X+s*Math.sin(fold)*k,Y+(18.6+s*Math.cos(fold))*k,Z+5.2*Math.cos(th)*k];};
+    S.curveTube(arc,.17*k,TIN,24,4);
+    S.ellTube(u=>arc(.5+(u-.5)*.36),.55*k,.55*k,MAT.WOOD,6,6);}
+  // the pole, stepped in the stern seat hard against the transom, and its iron crook
+  const hook=[X,Y+25.6*k,Z],px=-.468,top=hook[1]+.022;
+  S.curveTube(u=>[px,lerp(.104,top-.006,u),0],.0021,MAT.OAR,hiD?6:3,hiD?8:5);
+  S.curveTube(u=>[lerp(px,hook[0],u),lerp(top-.006,hook[1]+.002,u)+.012*Math.sin(Math.PI*u),0],.0011,MAT.TIN,hiD?14:6,hiD?6:4);
+  S.radial=sv;}
 function poseModel(m,rig){let x=m[0],y=m[1],z=m[2];
   const rot=(a,px,py)=>{const c=Math.cos(a),s=Math.sin(a),xx=x-px,yy=y-py;x=px+c*xx-s*yy;y=py+s*xx+c*yy;};
   if(rig===3){rot(boat.headAngle,.01,.357);const c=Math.cos(boat.headYaw),s=Math.sin(boat.headYaw),xx=x-.01;[x,z]=[.01+c*xx-s*z,s*xx+c*z];}
@@ -2082,6 +2130,8 @@ function rigUniforms(Pg){const u=Pg.u;
   gl.uniform1f(u.uBoatSize,boat.L);gl.uniform2f(u.uHeading,boat.h[0],boat.h[1]);gl.uniform1f(u.uLean,boat.lean);
   gl.uniform1f(u.uHeadAngle,boat.headAngle);gl.uniform1f(u.uHeadYaw,boat.headYaw);gl.uniform1f(u.uBlink,boat.blink);
   gl.uniform2f(u.uGaze,boat.gaze[0],boat.gaze[1]);gl.uniform3fv(u.uEyeC,SCAN.eyeC);gl.uniform4fv(u.uLidShape,SCAN.lidShape);}
+// the flame breathes, and now and then gutters
+function lanternFlicker(){const c=clock;return 1+.05*Math.sin(c*6.1)+.035*Math.sin(c*10.7+1.3)+.025*Math.sin(c*17.3+.4)-.10*Math.pow(Math.max(0,Math.sin(c*.77+.6)),24);}
 function lightUniforms(Pg){const u=Pg.u;
   gl.uniform3f(u.uLP,0,.45*RT,0);gl.uniform3f(u.uEye,Rm[6]*camF*sceneFit,Rm[7]*camF*sceneFit,Rm[8]*camF*sceneFit);
   gl.activeTexture(gl.TEXTURE3);gl.bindTexture(gl.TEXTURE_2D,shadowTex);gl.uniform1i(u.uShadow,3);gl.activeTexture(gl.TEXTURE0);
@@ -2140,6 +2190,9 @@ function drawBoat(refl){
   gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LESS);gl.disable(gl.BLEND);
   gl.useProgram(P_BOAT.p);setProj(P_BOAT,1,refl);gl.uniform2f(P_BOAT.u.uRes,bw,bh);gl.uniform2f(P_BOAT.u.uCtr,CW*ctrX-x0,CH*ctrY-y0);
   rigUniforms(P_BOAT);lightUniforms(P_BOAT);gl.uniform1f(P_BOAT.u.uDetail,boatDetail());
+  {const u=P_BOAT.u,F=poseModel(lanternPoint(LANT.flameH),1),d=camF*sceneFit,L=boat.L*LANT.k;
+    gl.uniform3fv(u.uFlame,F);gl.uniform2f(u.uFlameS,LANT.flameR[0]*L,LANT.flameR[1]*L);gl.uniform1f(u.uFlick,lanternFlicker());
+    gl.uniform3f(u.uEyeF,Rm[6]*d,refl?2*floorY-Rm[7]*d:Rm[7]*d,Rm[8]*d);}
   gl.bindVertexArray(VAO_BOAT);
   for(const mesh of boat.packets){bindBoatBuffer(mesh.buffer);gl.uniform1i(P_BOAT.u.uMeshRig,mesh.rig);gl.drawArrays(gl.TRIANGLES,0,mesh.n);}
   if(!refl&&boat.lod===2&&boat.strands){const Q=P_HAIR;gl.useProgram(Q.p);setProj(Q,1,0);gl.uniform2f(Q.u.uRes,bw,bh);gl.uniform2f(Q.u.uCtr,CW*ctrX-x0,CH*ctrY-y0);
