@@ -1010,7 +1010,7 @@ const Rm=[1,0,0,0,1,0,0,0,1];
 const RX_TREE=0.05;          // nearly side-on for the tree; the completed view opens low over the water
 // The prologue: before anything grows, a held shot of the boat alone on the water, looking past it toward the place the
 // stem will rise. The hold lasts PRO seconds; then the shot gives way to the camera above.
-const PRO=4,OPEN={elev:.022,side:-.035,width:.36,cx:.47,cy:.64,push:.035,out:8};
+const PRO=8,OPEN={elev:.022,side:-.035,width:.29,cx:.47,cy:.64,push:.035,out:8};
 let proT=PRO,opening=false;
 function openingWeight(){if(!opening||!$('auto').checked)return 0;return proT<PRO?1:1-sm(globalT()/OPEN.out);}
 function camera(t,allowOpening=true){
