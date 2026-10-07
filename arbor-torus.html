@@ -1449,7 +1449,12 @@ function glowAmount(){if(!opening||!$('auto').checked)return 0;
   return I;}
 // The light rises from deep water. Deep, its light reaches the surface spread wide, dim, bent and broken by the
 // ripples above it; as it nears the surface the patch draws in and brightens, the same light over less water.
-function glowDepth(){return 1-sm(glowPhase()/.95);}                      // 1 deep, 0 at the surface
+// Two stages. First the rise (RISE_PART of the build): deep, wide and broken, drawing in until it reaches the surface
+// and gathers to a point. Only then the dawn: with the point at the surface, the air above it begins to glow.
+const RISE_PART=.70;
+function riseStage(){return clamp01(glowPhase()/RISE_PART);}
+function dawnStage(){return clamp01((glowPhase()-RISE_PART+.035)/(1-RISE_PART));}   // (a half-second's overlap)
+function glowDepth(){return 1-sm(riseStage());}                                  // 1 deep, 0 at the surface
 const GLOW_NEAR=.22;
 function glowSize(){return boat.L*lerp(GLOW_NEAR,.95,Math.pow(glowDepth(),1.15));}
 function glowConc(){const k=GLOW_NEAR*boat.L/glowSize();return Math.pow(k,1.7);}   // brightness per area as it draws in
@@ -1460,8 +1465,8 @@ function glowBuild(){return glowPhase();}
 // light would make it. In the last moments the patch on the water gathers itself to a point, and the stem comes.
 const SUN_AT=.64;
 function sunState(){if(!opening||!$('auto').checked)return [0,0,0,0];
-  const R0=.33*boat.L,x=clamp01((glowPhase()-SUN_AT)/(1-SUN_AT)),xs=x*x*(3-2*x);
-  const tight=sm((proT-(PRO-2.2))/2.2);
+  const R0=.33*boat.L,x=dawnStage(),xs=x*x*(3-2*x);
+  const tight=sm((riseStage()-.80)/.20);                 // the gathering, as the rise ends
   return [R0*(.3+1.3*xs),R0*(1.0+1.8*xs),sm(x/.2),tight];}      // [glow's height, its breadth, how far it has come, the gathering]
 function underwaterGlow(){return 1.6*glowAmount();}
 function glowRadius(){const sn=sunState();return glowSize()*(1-.45*sn[3]);}
