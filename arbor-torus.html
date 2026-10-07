@@ -122,7 +122,8 @@ const GPU=HALF;          // float render targets: the morph and the flow both ru
 const TAU=Math.PI*2,M=96,TEXW=2048,FW=256;  // M = segments per root-to-tip path (= half a meridian); FW² flow particles
 const KZ=3,ZG=2.8;   // torus is KZ× the tree's extent (the bloom zooms out KZ×); growth zooms out ZG× from the seed
 const ATMOSPHERE={strength:1};
-const atmosphereGain=()=>ATMOSPHERE.strength*sm((t-.28)/.62);
+let mistIn=0;      // the mist gathers slowly over the whole piece (set by the timeline); by hand it follows the morph
+const atmosphereGain=()=>ATMOSPHERE.strength*($('auto').checked?mistIn:sm((t-.28)/.62));
 const clamp01=x=>x<0?0:x>1?1:x,sm=x=>{x=clamp01(x);return x*x*(3-2*x);},lerp=(a,b,t)=>a+(b-a)*t;
 const pos2pi=a=>((a%TAU)+TAU)%TAU;
 function rng(seed){return()=>{seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);
@@ -2263,6 +2264,7 @@ function updateTimeline(dt){
     const Tg=globalT();
     G=M*prof((Tg-VOID)/(12-VOID),0.3);   // growth slows over exactly the stretch in which the sag gathers: an even pace
     t=Tg<=T_BEND?0:prof((Tg-T_BEND)/(T_TOUCH-T_BEND),0.18);
+    mistIn=Math.pow(prof((Tg-2)/(T_TOUCH+1-2),0.3),2);   // a faint haze early in the growth (the lens is close then), gathering until the torus is down
     $('morph').value=t;cap=phases[ph][0];
     if(ph===0){const k=lev[Math.min(M-1,G|0)];cap+=G<0.05?' · Seed':k===0?' · Trunk':' · Generation '+k+' / '+D;}
     if(ph===2){const P_=(frontS-M)/M;if(P_>0.01)cap+=P_<1.05?' · Return':' · Circulation';}
