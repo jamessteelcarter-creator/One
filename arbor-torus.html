@@ -766,7 +766,7 @@ const WATER_TREATMENT={rainContrast:0.78};
 const WATER_FS=`#version 300 es
 precision highp float;in vec2 vU;
 uniform sampler2D uT;
-uniform vec3 uLantern;uniform float uLanternA,uLanternR,uGreenGain,uSeedGlow,uSeedRadius,uRiseAge,uRiseSpeed;
+uniform vec3 uLantern;uniform float uLanternA,uLanternR,uGreenGain,uSeedGlow,uSeedRadius,uRiseAge,uRiseSpeed,uSunY,uSunR,uSunA;
 uniform mat3 uR;uniform float uS,uF,uPF,uFloor,uTime,uGain,uCam,uK,uRL,uRA,uBandR,uBandA,uRainA,uRainP,uRainContrast,uTouchT,uTouchR,uBoatL,uOarT,uBoatV,uStroke,uOarClock,uRowPower,uWakeGain;uniform vec4 uBoat;uniform vec2 uRes,uCtr;
 out vec4 o;
 float hs(vec2 p){p=fract(p*vec2(123.34,456.21));p+=dot(p,p+45.32);return fract(p.x*p.y);}
@@ -840,7 +840,14 @@ vec3 waterLight(vec2 frag,vec3 H,vec3 E,vec2 gr){
   if(uSeedGlow>0.){   // light from under the water: a soft patch on the surface, bent and broken by the ripples above it
     vec2 under=H.xz+gr*uBoatL*.9;float d2=dot(under,under)/(uSeedRadius*uSeedRadius);
     float shim=.55+.9*wn(under/(.05*uBoatL)+uTime*vec2(.22,-.17))*wn(under/(.11*uBoatL)-uTime*vec2(.09,.13)+4.2);
-    c+=vec3(.10,.78,.40)*uSeedGlow*.42*exp(-d2*1.4)*shim;}
+    c+=vec3(.10,.78,.40)*uSeedGlow*.42*exp(-d2*1.4)*shim;
+    float up=uSunA*clamp((uSunY+uSunR)/(2.*uSunR),0.,1.);
+    if(up>0.){                        // once it stands above the water, its path of light comes toward us over the ripples
+      vec3 gw=vec3(0.,uFloor+max(uSunY,0.)+.35*uSunR,0.)-H;float gd=length(gw);vec3 Gw=gw/gd;
+      vec3 sd=normalize(cross(vec3(0.,1.,0.),Gw)),upv=cross(Gw,sd),dv=reflect(-v,vec3(0.,1.,0.))-Gw;
+      float ver=dot(dv,upv),rs=uSunR*.75/gd+.0015,lat=dot(dv,sd)+rs*.7*(wn(vec2(ver/.010+uTime*.6,5.7))-.5);
+      float dash=smoothstep(.25,.7,wn(vec2(lat/rs*.7,ver/.0045-uTime*1.4)))*(.6+.4*wn(vec2(ver/.022-uTime*.4,1.9)));
+      c+=vec3(.14,.88,.46)*uSeedGlow*up*.55*(.02+.98*pow(1.-clamp(v.y,0.,1.),5.))*exp(-lat*lat/(rs*rs)-ver*ver/.0022)*dash*smoothstep(.9,.99,dot(reflect(-v,vec3(0.,1.,0.)),Gw));}}
   {vec3 lw=uLantern-H;float dl=length(lw);vec3 Lw=lw/dl;
     // the lantern on the water: a narrow column of light under it, as wide as the flame seen from here and drawn out
     // up and down by the ripples' tilt toward and away from us, broken into dashes where they turn it aside
@@ -878,6 +885,7 @@ function drawWater(){
   gl.uniform1f(U_.uK,0.35*Scam*camFit);
   gl.uniform3fv(U_.uLantern,lanternPosition());gl.uniform1f(U_.uLanternA,lanternGain());gl.uniform1f(U_.uLanternR,.11*boat.L);gl.uniform1f(U_.uGreenGain,greenGain());
   gl.uniform1f(U_.uSeedGlow,underwaterGlow());gl.uniform1f(U_.uSeedRadius,glowRadius());
+  {const sn=sunState();gl.uniform1f(U_.uSunY,sn[0]);gl.uniform1f(U_.uSunR,Math.max(1e-4,sn[1]));gl.uniform1f(U_.uSunA,sn[2]);}
   gl.uniform1f(U_.uRiseAge,opening&&$('auto').checked?emergenceClock:-1);gl.uniform1f(U_.uRiseSpeed,.8*RT);
   gl.uniform4f(U_.uBoat,boat.pos[0],boat.pos[1],boat.h[0],boat.h[1]);gl.uniform1f(U_.uBoatL,boat.L);
   gl.uniform1f(U_.uOarT,boat.oarT);gl.uniform1f(U_.uBoatV,boat.v);gl.uniform1f(U_.uStroke,STROKE);
@@ -1424,7 +1432,7 @@ const LAMP_POWER=11;
 // The rest of the scene keeps its approved exposure and lighting.
 function lampExposure(){return opening&&$('auto').checked?lerp(2.4,1,sm(G/(M*.15))):1;}
 function lanternGain(){return LAMP_POWER*lanternFlicker()*lampExposure();}
-function greenGain(){return $('auto').checked?lerp(.006,1,sm((globalT()-.35)/7.5)):1;}
+function greenGain(){if(!$('auto').checked)return 1;const s=sunState();return Math.max(lerp(.006,1,sm((globalT()-.35)/7.5)),.006+.10*s[2]*Math.min(1,glowAmount()));}   // (the risen light reaches him first)
 /* The light under the water. It is first a speck you are not sure you saw, then a small patch that breathes and
    gathers in uneven swells, spreading as it comes up toward the surface, until the stem breaks through it; then it
    becomes the light at the stem's foot and gives way to the structure's own. */
@@ -1434,14 +1442,21 @@ function glowAmount(){if(!opening||!$('auto').checked)return 0;
   const u=glowPhase(),c=clock;
   let I=Math.pow(u,2.3)*(1+.28*Math.exp(-Math.pow((u-.46)/.05,2))+.22*Math.exp(-Math.pow((u-.78)/.045,2)));   // two swells on the way up
   I*=.80+.16*noise1(c*.55)+.08*noise1(c*1.9+7.3)-.05*Math.pow(noise1(c*.21+3.1),6);                         // it breathes, unevenly
-  if(proT>=PRO)I*=(1+.42*sm(emergenceClock/1.8)*Math.exp(-Math.max(0,G-.8)/1.8))*(1-sm((G-1.5)/11));       // a last swell as the stem breaks through it, then it gives way
+  if(proT>=PRO)I*=(1+.42*sm(emergenceClock/1.8)*Math.exp(-Math.max(0,G-.8)/1.8))*(1-sm((G-1.5)/18));       // a last swell as the stem breaks through it, then it gives way
   return I;}
 function glowSize(){return boat.L*(.03+.30*Math.pow(glowPhase(),1.5));}
 function glowBuild(){return glowPhase();}
+// After some nine seconds under the water the light begins to crest the surface, rising like the sun over the horizon,
+// until its upper half stands clear as the stem comes; then it is carried up at the stem's tip and narrows into it.
+const SUN_AT=.64;
+function sunState(){if(!opening||!$('auto').checked)return [0,0,0];
+  const R0=glowSize(),x=clamp01((glowPhase()-SUN_AT)/(1-SUN_AT));let y=-R0+R0*Math.pow(x,1.6),R=R0;
+  if(proT>=PRO){const free=.32*R0*emergenceClock,tip=G>0?visibleCrownHeight():0;y=Math.max(free,tip-.15*R0);R=R0*(1-.72*sm((y-R0)/(5*R0)));}
+  return [y,R,sm(x/.12)];}
 function underwaterGlow(){return 1.6*glowAmount();}
 function glowRadius(){return glowSize();}
 const GLOW_FS=`#version 300 es
-precision highp float;in vec2 vU;uniform mat3 uR;uniform float uS,uF,uPF,uFloor,uI,uSig,uTime;uniform vec2 uRes,uCtr;out vec4 o;
+precision highp float;in vec2 vU;uniform mat3 uR;uniform float uS,uF,uPF,uFloor,uI,uSig,uTime,uSunY,uSunR,uSunA;uniform vec2 uRes,uCtr;out vec4 o;
 void main(){
   vec2 frag=vec2(vU.x*uRes.x,(1.-vU.y)*uRes.y),sp=vec2(frag.x-uCtr.x,-(frag.y-uCtr.y));
   mat3 Rt=transpose(uR);vec3 E=Rt*vec3(0.,0.,uF*uPF),D=normalize(Rt*(vec3(sp/uS,0.)-vec3(0.,0.,uF*uPF)));
@@ -1450,7 +1465,13 @@ void main(){
   float wob=1.+.10*sin(cp.x*5.+uTime*1.3)*sin(cp.z*4.-uTime*.9)*under;                  // what is seen through the water quavers
   float halo=exp(-r2*wob),core=exp(-r2*7.);
   // through the water the patch is full; above it only a little of the light is caught in the damp air
-  vec3 c=vec3(.10,.80,.42)*(mix(.22,.55,under)*halo+mix(.45,.8,under)*core)+vec3(.55,1.,.75)*.55*exp(-r2*30.);
+  vec3 c=vec3(.10,.80,.42)*(mix(.22,.55,under)*halo+mix(.45,.8,under)*core)+vec3(.55,1.,.75)*.55*exp(-r2*30.)*(1.-uSunA*.7);
+  if(uSunA>0.){                       // the light breaking the surface: a luminous disc rising, its edge soft, the water cutting it off
+    vec3 C=vec3(0.,uFloor+uSunY,0.);float tc=dot(C-E,D);vec3 P=E+D*tc;float q=length(P-C)/uSunR;
+    float disc=1.-smoothstep(.84,1.,q),limb=sqrt(max(0.,1.-q*q)),above=smoothstep(-.04,.04,(P.y-uFloor)/uSunR);
+    vec3 sun=mix(vec3(.14,.88,.44),vec3(.78,1.,.86),limb)*disc*(.6+.4*limb)*1.55;
+    float air=exp(-q*q/3.2)*(1.-disc*.6);
+    c+=uSunA*(sun*mix(.08,1.,above)+vec3(.10,.80,.42)*.20*air*mix(.4,1.,above));}
   o=vec4(c*uI,1.);}`;
 let P_GLOW=null;
 function drawGlow(){const I=glowAmount();if(I<1e-4)return;
@@ -1460,6 +1481,7 @@ function drawGlow(){const I=glowAmount();if(I<1e-4)return;
   gl.uniformMatrix3fv(u.uR,false,[Rm[0],Rm[3],Rm[6],Rm[1],Rm[4],Rm[7],Rm[2],Rm[5],Rm[8]]);
   gl.uniform1f(u.uS,Scam);gl.uniform1f(u.uF,camF);gl.uniform1f(u.uPF,sceneFit);gl.uniform1f(u.uFloor,floorY);gl.uniform1f(u.uTime,clock);
   gl.uniform2f(u.uRes,CW,CH);gl.uniform2f(u.uCtr,CW*ctrX,CH*ctrY);gl.uniform1f(u.uI,1.6*I);gl.uniform1f(u.uSig,glowSize());
+  {const sn=sunState();gl.uniform1f(u.uSunY,sn[0]);gl.uniform1f(u.uSunR,Math.max(1e-4,sn[1]));gl.uniform1f(u.uSunA,sn[2]);}
   gl.bindVertexArray(VAO_EMPTY);gl.drawArrays(gl.TRIANGLES,0,3);}
 function openingMistGain(){return opening&&$('auto').checked?.25+.75*(1-sm(globalT()/8)):0;}
 function traceWater(sx,sy){
@@ -2538,7 +2560,13 @@ const VOID=0.15,T_BEND=9.3,T_TOUCH=22.5,phases=[['I · Genesis',12],['II · Bloo
 const globalT=()=>ph===0?pt:ph===1?12+pt:T_TOUCH+pt;
 let ph=0,pt=0,G=0,t=0,emergenceClock=0;
 // The earlier rise: a gentle start eases into the original pace over eight seconds.
-function growthTime(e){const u=clamp01(e/8);return e<8?.3*e+.7*8*(u*u*u-.5*u*u*u*u):e-2.8;}
+// The rise: it begins at a fifth of its full pace and gathers smoothly to that pace, reached just before the canopy
+// begins to fall (structure time RISE_T1). This one curve replaces the original gentle start, so the two never compound.
+const RISE_S0=.2,RISE_T1=8.3,RISE_E1=(RISE_T1-VOID-.15*(12-VOID))/((1+RISE_S0)/2);
+function riseDist(e){const x=clamp01(e/RISE_E1);return e>=RISE_E1?RISE_E1*(1+RISE_S0)/2+(e-RISE_E1):RISE_S0*e+(1-RISE_S0)*RISE_E1*(x*x*x-.5*x*x*x*x);}
+function growthTime(e){if(e<=0)return 0;if(e>=RISE_E1)return RISE_T1+(e-RISE_E1);
+  const vv=1/.7,r=.3,p=riseDist(e)*vv/(12-VOID),f=p<.5*vv*r?Math.sqrt(2*r*p/vv):p/vv+r/2;   // (inverting the original curve's start)
+  return VOID+(12-VOID)*f;}
 function growthClockFor(time){let lo=0,hi=time*6+20;for(let i=0;i<32;i++){const mid=(lo+hi)/2;if(growthTime(mid)<time)lo=mid;else hi=mid;}return (lo+hi)/2;}
 // The canopy and its growth glow settle together over 2.8 real seconds as the bend begins.
 const CANOPY_FADE_SECONDS=2.8;
