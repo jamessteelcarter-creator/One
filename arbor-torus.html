@@ -729,7 +729,7 @@ const WATER_TREATMENT={rainContrast:0.78};
 const WATER_FS=`#version 300 es
 precision highp float;in vec2 vU;
 uniform sampler2D uT;
-uniform vec3 uLampP;uniform float uStruct,uLamp,uLampR;
+uniform vec3 uLampP;uniform float uStruct,uLamp,uLampR,uGlowI,uGlowS,uRiseAge,uRiseV;
 uniform mat3 uR;uniform float uS,uF,uPF,uFloor,uTime,uGain,uCam,uK,uRL,uRA,uBandR,uBandA,uRainA,uRainP,uRainContrast,uTouchT,uTouchR,uBoatL,uOarT,uBoatV,uStroke;uniform vec4 uBoat;uniform vec2 uRes,uCtr;
 out vec4 o;
 float hs(vec2 p){p=fract(p*vec2(123.34,456.21));p+=dot(p,p+45.32);return fract(p.x*p.y);}
@@ -772,6 +772,8 @@ vec2 grad(vec2 p,out vec2 rain){         // analytic slope of the water surface 
   rain=uRainA*mix(rainLayer(p,a),rainLayer(p,2.*a),f)/(1.+dot(p,p)/(6.*c*c));   // thinning toward the horizon
   g+=rain;
   g+=wakeGrad(p);                     // the dinghy's wake and the puddles of its oars
+  if(uRiseAge>0.&&uRiseAge<18.){float r0=length(p),w0=4.5*uBoatL,d0=r0-uRiseV*uRiseAge;     // the swell the stem sends out as it breaks the water
+    if(r0>1e-5)g+=p/r0*.041*exp(-d0*d0/(w0*w0))*cos(d0*3.14159/uBoatL)*exp(-uRiseAge/16.)*smoothstep(0.,1.,uRiseAge)*(1.-smoothstep(16.,17.,uRiseAge));}
   float r=length(p);if(r<1e-6)return g;
   if(uTouchT>=0.&&uTouchT<6.){          // the instant the branch ends touch the water, a ring wave rises from the whole circle of
     float tv=0.22*c,lt=0.07*c,kt=6.2831853/lt,wt=lt*(0.7+0.7*uTouchT),at=0.9*exp(-uTouchT/1.6);   // contact and runs out and in
@@ -797,6 +799,10 @@ vec3 waterLight(vec2 frag,vec3 H,vec3 E,vec2 gr){
   float al=max(dot(rv,ld),0.);   // the light is large (the whole glowing torus): sharp sparkle plus a broad sheen, only on moving water
   c+=vec3(0.5,1.,0.65)*(pow(al,90.)*0.9+pow(al,12.)*0.35)*min(1.,slope*6.)*uGain*fade*uStruct;
   c+=vec3(0.3,1.,0.6)*0.01*uGain*exp(-dot(H.xz,H.xz)/(uCam*uCam*1.2))*uStruct;  // faint light on the surface beneath the structure
+  if(uGlowI>0.){      // light from under the water: a soft patch on the surface, bent and broken by the ripples above it
+    vec2 under=H.xz+gr*uBoatL*.9;float d2=dot(under,under)/(uGlowS*uGlowS);
+    float shim=.55+.9*wn(under/(.05*uBoatL)+uTime*vec2(.22,-.17))*wn(under/(.11*uBoatL)-uTime*vec2(.09,.13)+4.2);
+    c+=vec3(.10,.78,.40)*uGlowI*.42*exp(-d2*1.4)*shim;}
   {vec3 lw=uLampP-H;float dl=length(lw);vec3 Lw=lw/dl;
     // the lantern on the water: a narrow column of light under it, as wide as the flame seen from here and drawn out
     // up and down by the ripples' tilt toward and away from us, broken into dashes where they turn it aside
@@ -828,6 +834,7 @@ function drawWater(){
   gl.uniformMatrix3fv(U_.uR,false,[Rm[0],Rm[3],Rm[6],Rm[1],Rm[4],Rm[7],Rm[2],Rm[5],Rm[8]]);
   gl.uniform1f(U_.uS,Scam);gl.uniform1f(U_.uF,camF);gl.uniform1f(U_.uPF,sceneFit);gl.uniform1f(U_.uFloor,floorY);
   gl.uniform1f(U_.uTime,clock);gl.uniform1f(U_.uGain,+$('refl').value*1.4);gl.uniform1f(U_.uCam,camFit);lampUniforms(U_);
+  gl.uniform1f(U_.uGlowI,1.6*glowAmount());gl.uniform1f(U_.uGlowS,glowSize());gl.uniform1f(U_.uRiseAge,opening&&$('auto').checked&&proT>=PRO?emergenceClock:-1);gl.uniform1f(U_.uRiseV,riseV);
   gl.uniform1f(U_.uK,0.35*Scam*camFit);
   gl.uniform4f(U_.uBoat,boat.pos[0],boat.pos[1],boat.h[0],boat.h[1]);gl.uniform1f(U_.uBoatL,boat.L);
   gl.uniform1f(U_.uOarT,boat.oarT);gl.uniform1f(U_.uBoatV,boat.v);gl.uniform1f(U_.uStroke,STROKE);
@@ -1026,9 +1033,14 @@ const Rm=[1,0,0,0,1,0,0,0,1];
 const RX_TREE=0.05;          // nearly side-on for the tree; the completed view opens low over the water
 // The prologue: before anything grows, a held shot of the boat alone on the water, looking past it toward the place the
 // stem will rise. The hold lasts PRO seconds; then the shot gives way to the camera above.
-const PRO=8,OPEN={elev:.022,side:.066,width:.29,cx:.47,cy:.64,push:.035,out:8};
+// After a few quiet seconds a light begins under the water ahead of him and gathers for GLOW_T seconds before the
+// stem breaks through it. Then the shot hands over in two movements: the lens draws back first, and only once the
+// boat is small does the view swing round to the camera's own angle, so the turn never reads as the boat swinging.
+const QUIET=4,GLOW_T=14,PRO=QUIET+GLOW_T,OPEN={elev:.022,ox:.15,width:.29,cx:.50,cy:.64,push:.035};
 let proT=PRO,opening=false;
-function openingWeight(){if(!opening||!$('auto').checked)return 0;return proT<PRO?1:1-sm(globalT()/OPEN.out);}
+function openingWeights(){if(!opening||!$('auto').checked)return [0,0];if(proT<PRO)return [1,1];
+  const e=emergenceClock;return [1-sm((e-1.2)/9.5),1-sm((e-4.5)/12)];}     // [framing, angle]
+function openingWeight(){return openingWeights()[0];}
 function camera(t,allowOpening=true){
   sceneFit=fitTree*Math.pow(KZ,t);
   zoomF=G<M?Math.pow(ZG,1-G/M):1;
@@ -1044,22 +1056,25 @@ function camera(t,allowOpening=true){
   const minRx=Math.asin(Math.max(-1,Math.min(1,(floorY+0.004*sceneFit)/dist)));
   const rx=Math.max(minRx,Math.min(1.45,base+rxU));rxU=rx-base;
   // world → camera: turn about the vertical axis (horizon stays level), then elevation, then roll
-  const ow=allowOpening&&!boat.dirty?openingWeight():0;
+  const [owF,ow]=allowOpening&&!boat.dirty?openingWeights():[0,0];
   let yw=yaw+ry,rxE=rx;
   if(ow>0){       // the opening looks along the line from the boat to the seed, turned a little so the stem rises beside him
-    const oy=Math.atan2(-boat.pos[0],boat.pos[1])+OPEN.side,d=oy-yw;
+    // turned just so far that the place it will rise stays where it was marked, however far the boat has come
+    const b=boat.pos,R=Math.hypot(b[0],b[1])||1,push=1+OPEN.push*sm(Math.min(proT,PRO+2)/(PRO+2));
+    const Xt=(OPEN.cx-OPEN.ox)*boat.L*CW/(OPEN.width*Math.min(CW,1.6*CH)*push);
+    const oy=Math.atan2(-b[0],b[1])+Math.asin(Math.max(-.9,Math.min(.9,Xt/R))),d=oy-yw;
     yw+=(d-TAU*Math.floor((d+Math.PI)/TAU))*ow;rxE=lerp(rx,Math.max(minRx,OPEN.elev),ow);}
   const cw=Math.cos(yw),sw=Math.sin(yw),cx=Math.cos(rxE),sx=Math.sin(rxE),cz=Math.cos(rz),sz=Math.sin(rz);
   const Ry=[cw,0,sw, 0,1,0, -sw,0,cw],Rx=[1,0,0, 0,cx,-sx, 0,sx,cx],Rz=[cz,-sz,0, sz,cz,0, 0,0,1];
   const mul=(A,B)=>{const C=new Array(9);for(let r=0;r<3;r++)for(let c=0;c<3;c++)C[r*3+c]=A[r*3]*B[c]+A[r*3+1]*B[3+c]+A[r*3+2]*B[6+c];return C;};
   const R_=mul(Rz,mul(Rx,Ry));for(let i=0;i<9;i++)Rm[i]=R_[i];
-  if(ow>0){       // frame the boat: about a third of the frame wide, low in the frame, the lens creeping in through the hold
+  if(owF>0){      // frame the boat: about a third of the frame wide, low in the frame, the lens creeping in through the hold
     const L=boat.L,c=[boat.pos[0],.15*L,boat.pos[1]];
     const X=Rm[0]*c[0]+Rm[1]*c[1]+Rm[2]*c[2],Y=Rm[3]*c[0]+Rm[4]*c[1]+Rm[5]*c[2],Z=Rm[6]*c[0]+Rm[7]*c[1]+Rm[8]*c[2];
     const k=camF/Math.max(.5,camF-Z/sceneFit),push=1+OPEN.push*sm(Math.min(proT,PRO+2)/(PRO+2));
     const So=OPEN.width*Math.min(CW,1.6*CH)/(L*k)*push;
-    Scam=Math.exp(lerp(Math.log(Scam),Math.log(So),ow));
-    ctrX=lerp(ctrX,OPEN.cx-X*Scam*k/CW,ow);ctrY=lerp(ctrY,OPEN.cy+Y*Scam*k/CH,ow);}
+    Scam=Math.exp(lerp(Math.log(Scam),Math.log(So),owF));
+    ctrX=lerp(ctrX,OPEN.cx-X*Scam*k/CW,owF);ctrY=lerp(ctrY,OPEN.cy+Y*Scam*k/CH,owF);}
 }
 function projCPU(x,y,z){const X=Rm[0]*x+Rm[1]*y+Rm[2]*z,Y=Rm[3]*x+Rm[4]*y+Rm[5]*z,Z=Rm[6]*x+Rm[7]*y+Rm[8]*z;
   const k=camF/Math.max(0.5,camF-Z/sceneFit);return [CW*ctrX+X*Scam*k,CH*ctrY-Y*Scam*k];}
@@ -1344,7 +1359,7 @@ gl.bindVertexArray(VAO_BOAT);for(let i=0;i<5;i++)gl.enableVertexAttribArray(i);g
 function bindBoatBuffer(buffer){gl.bindBuffer(gl.ARRAY_BUFFER,buffer);
   for(let i=0;i<3;i++)gl.vertexAttribPointer(i,3,gl.FLOAT,false,BVB,i*12);
   gl.vertexAttribPointer(3,1,gl.FLOAT,false,BVB,36);gl.vertexAttribPointer(4,4,gl.FLOAT,false,BVB,40);}
-const BOAT_T=150,STROKE=3.8;let boatEpoch=0;
+const BOAT_T=118,STROKE=3.0;let boatEpoch=0;   // a stroke every three seconds; the passage quickens to match
 const boat={A:[0,0],B:[1,0],L:1,dirty:true,cw:0,ch:0,pos:[0,0],h:[1,0],v:0,oarT:0,lean:0,headAngle:0,headYaw:0,blink:0,gaze:[0,0],lod:0,figures:[],hulls:[],packets:null};
 function traceWater(sx,sy){
   const T=v=>[Rm[0]*v[0]+Rm[3]*v[1]+Rm[6]*v[2],Rm[1]*v[0]+Rm[4]*v[1]+Rm[7]*v[2],Rm[2]*v[0]+Rm[5]*v[1]+Rm[8]*v[2]];
@@ -1370,6 +1385,10 @@ const V3={add:(a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]],sub:(a,b)=>[a[0]-b[0],a[1]-
 // Buoyancy follows the existing contact wave, sampled across the hull.
 // A damped response gives the dinghy weight rather than copying every small crest.
 const BOAT_FLOAT={gain:1.6,heavePeriod:.9,pitchPeriod:.9,rollPeriod:1.15,damping:.7};
+function emergenceWaterHeight(x,z,ago=0){
+  const age=opening&&$('auto').checked&&proT>=PRO?emergenceClock-ago:-1;if(age<=0||age>=18)return 0;
+  const r=Math.hypot(x,z),d=r-riseV*age,w=4.5*boat.L;
+  return .022*boat.L*Math.exp(-d*d/(w*w))*Math.sin(d*Math.PI/boat.L)*Math.exp(-age/16)*sm(age)*(1-sm(age-16));}
 function contactWaterHeight(x,z,age){
   if(age<0||age>=6)return 0;
   const c=camFit,R=(+$('hole').value+2)*RT,r=Math.hypot(x,z),v=.22*c,lambda=.07*c;
@@ -1423,6 +1442,10 @@ function updateBoatFloat(){
     pitch=.14*forward*decay*Math.sin(TAU*tau/1.65);
     roll=-.18*across*decay*Math.sin(TAU*tau/1.85);
   }
+  // the ring from the stem's emergence: a long, low swell the boat simply rides as it passes under
+  {const L=boat.L,[hx,hz]=boat.h,P=boat.pos,at=(x,z)=>emergenceWaterHeight(P[0]+(hx*x-hz*z)*L,P[1]+(hz*x+hx*z)*L);
+    const bw=at(.32,0),st=at(-.32,0),po=at(0,.17),sb=at(0,-.17);
+    lift+=(bw+st+po+sb)/4;pitch+=Math.atan2(bw-st,.64*L);roll-=Math.atan2(po-sb,.34*L);}
   f.at=clock;f.age=age;boat.lift=f.p[0]+lift;boat.pitch=f.p[1]+pitch;boat.roll=f.p[2]+roll;
   const cp=Math.cos(boat.pitch),sp=Math.sin(boat.pitch),cr=Math.cos(boat.roll),sr=Math.sin(boat.roll),[hx,hz]=boat.h;
   const rotate=q=>{
@@ -2056,10 +2079,16 @@ function updateBoat(){
   const xs=.01,Hp=[xs,.119,0],dir=[-Math.sin(lean),Math.cos(lean),0],Sh=V3.add(Hp,V3.mul(dir,.190));
   boat.lean=lean;boat.headAngle=-lean*.60-.035+.008*Math.sin(clock*.9);
   boat.headYaw=.028*Math.sin(clock*.48)+.012*(e-.5);
+  const look=opening&&$('auto').checked?sm((proT-(PRO-5.5))/3.2)*(1-sm((emergenceClock-10)/5)):0;   // late in the glow he notices it
+  let lookT=0;
+  if(look>0){const tx=-boat.pos[0],tz=-boat.pos[1],lx=boat.h[0]*tx+boat.h[1]*tz,lz=-boat.h[1]*tx+boat.h[0]*tz;
+    lookT=-Math.atan2(lz,-lx);const ly=Math.max(-1.0,Math.min(1.0,lookT));
+    boat.headYaw+=ly*look;boat.headAngle-=.10*look*sm(emergenceClock/4);boat.__look=[look,lookT-ly];}else boat.__look=null;
   const blinkPhase=(clock+1.7)%5.6;boat.blink=blinkPhase<.23?Math.pow(Math.sin(Math.PI*blinkPhase/.23),2):0;
   {const T_=2.3,k=Math.floor((clock+.6)/T_),f=(clock+.6)/T_-k,hs=n=>{const x=Math.sin(n*127.1+311.7)*43758.5453;return x-Math.floor(x);};
     const at=n=>[(hs(n)-.5)*.30,(hs(n+31.7)-.5)*.10-.06],a=at(k-1),b=at(k),s=sm(f*T_/.07);   // the eyes move in quick, small jumps
     boat.gaze=[lerp(a[0],b[0],s)-boat.headYaw*.8,lerp(a[1],b[1],s)-boat.headAngle*.75];}
+  if(boat.__look){const [lk,rest]=boat.__look;boat.gaze[0]=lerp(boat.gaze[0],Math.max(-.45,Math.min(.45,rest)),lk);boat.gaze[1]=lerp(boat.gaze[1],.04,lk);}   // the eyes go to it too
   // three levels of detail; the closest is built once, between frames
   let lod=hiD?1:0;
   if(lod&&headPx()>(boat.lod===2?28:36)){
@@ -2178,7 +2207,19 @@ function rigUniforms(Pg){const u=Pg.u;
   gl.uniform2f(u.uGaze,boat.gaze[0],boat.gaze[1]);gl.uniform3fv(u.uEyeC,SCAN.eyeC);gl.uniform4fv(u.uLidShape,SCAN.lidShape);}
 // the flame breathes, and now and then gutters
 // how much of the structure's light there is: none before it has begun, rising as the stem comes up
-function structLight(){if(!opening||!$('auto').checked)return 1;if(proT<PRO)return 0;return sm(G/(M*.15));}
+function structLight(){if(!opening||!$('auto').checked)return 1;return Math.max(.10*glowAmount(),proT<PRO?0:sm(G/(M*.15)));}
+/* The light under the water. It is first a speck you are not sure you saw, then a small patch that breathes and
+   gathers in uneven swells, spreading as it comes up toward the surface, until the stem breaks through it; then it
+   becomes the light at the stem's foot and gives way to the structure's own. */
+const noise1=x=>{const i=Math.floor(x),f=x-i,h=n=>{const v=Math.sin(n*127.1+311.7)*43758.5453;return v-Math.floor(v);};return lerp(h(i),h(i+1),f*f*(3-2*f));};
+function glowPhase(){return clamp01((proT-QUIET)/GLOW_T);}
+function glowAmount(){if(!opening||!$('auto').checked)return 0;
+  const u=glowPhase(),c=clock;
+  let I=Math.pow(u,2.3)*(1+.28*Math.exp(-Math.pow((u-.46)/.05,2))+.22*Math.exp(-Math.pow((u-.78)/.045,2)));   // two swells on the way up
+  I*=.80+.16*noise1(c*.55)+.08*noise1(c*1.9+7.3)-.05*Math.pow(noise1(c*.21+3.1),6);                         // it breathes, unevenly
+  if(proT>=PRO)I*=(1+.42*sm(emergenceClock/1.8)*Math.exp(-Math.max(0,G-.8)/1.8))*(1-sm((G-1.5)/11));          // a last swell as the stem breaks through it, then it gives way to the structure
+  return I;}
+function glowSize(){return boat.L*(.03+.30*Math.pow(glowPhase(),1.5));}
 const LAMP_POWER=11;
 function lampPower(){return LAMP_POWER*lanternFlicker();}
 function lampWorld(){return poseModel(lanternPoint(LANT.flameH),1);}
@@ -2317,6 +2358,26 @@ void main(){
     float a=exp(-sg*dt);L+=T*(1.-a)*Li;T*=a;}
   o=vec4(L,T);}`;
 const P_LMIST=program(FS_VS,LMIST_FS);
+const GLOW_FS=`#version 300 es
+precision highp float;in vec2 vU;uniform mat3 uR;uniform float uS,uF,uPF,uFloor,uI,uSig,uTime;uniform vec2 uRes,uCtr;out vec4 o;
+void main(){
+  vec2 frag=vec2(vU.x*uRes.x,(1.-vU.y)*uRes.y),sp=vec2(frag.x-uCtr.x,-(frag.y-uCtr.y));
+  mat3 Rt=transpose(uR);vec3 E=Rt*vec3(0.,0.,uF*uPF),D=normalize(Rt*(vec3(sp/uS,0.)-vec3(0.,0.,uF*uPF)));
+  vec3 k=vec3(1.,2.4,1.)/uSig,e=(E-vec3(0.,uFloor,0.))*k,d=normalize(D*k),cp=e-d*dot(e,d);
+  float r2=dot(cp,cp),under=cp.y<0.?1.:0.;
+  float wob=1.+.10*sin(cp.x*5.+uTime*1.3)*sin(cp.z*4.-uTime*.9)*under;                  // what is seen through the water quavers
+  float halo=exp(-r2*wob),core=exp(-r2*7.);
+  // through the water the patch is full; above it only a little of the light is caught in the damp air
+  vec3 c=vec3(.10,.80,.42)*(mix(.22,.55,under)*halo+mix(.45,.8,under)*core)+vec3(.55,1.,.75)*.55*exp(-r2*30.);
+  o=vec4(c*uI,1.);}`;
+const P_GLOW=program(FS_VS,GLOW_FS);
+function drawGlow(){const I=glowAmount();if(I<1e-4)return;
+  const u=P_GLOW.u;gl.bindFramebuffer(gl.FRAMEBUFFER,scene.f);gl.viewport(0,0,CW,CH);gl.useProgram(P_GLOW.p);
+  gl.enable(gl.BLEND);gl.blendFunc(gl.ONE,gl.ONE);
+  gl.uniformMatrix3fv(u.uR,false,[Rm[0],Rm[3],Rm[6],Rm[1],Rm[4],Rm[7],Rm[2],Rm[5],Rm[8]]);
+  gl.uniform1f(u.uS,Scam);gl.uniform1f(u.uF,camF);gl.uniform1f(u.uPF,sceneFit);gl.uniform1f(u.uFloor,floorY);gl.uniform1f(u.uTime,clock);
+  gl.uniform2f(u.uRes,CW,CH);gl.uniform2f(u.uCtr,CW*ctrX,CH*ctrY);gl.uniform1f(u.uI,1.6*I);gl.uniform1f(u.uSig,glowSize());
+  gl.bindVertexArray(VAO_EMPTY);gl.drawArrays(gl.TRIANGLES,0,3);}
 function openingMist(){return openingWeight();}
 function drawLMist(){
   fogDrawn=0;const amt=openingMist();if(amt<.003||!fogBoat.on)return;
@@ -2414,7 +2475,7 @@ function render(clock){
       gl.drawArrays(gl.POINTS,0,NSTAR);}
   }
   if(reflOn){gl.bindFramebuffer(gl.FRAMEBUFFER,scene.f);gl.viewport(0,0,CW,CH);gl.blendFunc(gl.ONE,gl.ONE);drawWater();}
-  drawBoat(0);drawLMist();
+  drawGlow();drawBoat(0);drawLMist();
   gl.bindVertexArray(VAO_EMPTY);gl.activeTexture(gl.TEXTURE0);
   // bloom: downsample chain, then upsample back with additive accumulation
   gl.disable(gl.BLEND);gl.useProgram(P_DOWN.p);gl.uniform1i(P_DOWN.u.uT,0);
@@ -2449,16 +2510,22 @@ function prof(f,r){f=clamp01(f);const vv=1/(1-r);return f<r?0.5*vv*f*f/r:f>1-r?1
 // no pause anywhere, the bend easing in as gently as it eases out
 const VOID=0.9,T_BEND=9.3,T_TOUCH=22.5,phases=[['I · Genesis',12],['II · Bloom',T_TOUCH-12],['III · Torus',Infinity]];
 const globalT=()=>ph===0?pt:ph===1?12+pt:T_TOUCH+pt;
-let ph=0,pt=0,G=0,t=0;
+let ph=0,pt=0,G=0,t=0,emergenceClock=0,riseV=1;
+// The first rise: growth begins at three tenths of its pace and eases into it over eight seconds (it is heavy).
+function growthTime(e){const u=clamp01(e/8);return e<8?.3*e+.7*8*(u*u*u-.5*u*u*u*u):e-2.8;}
+function growthClockFor(time){let lo=0,hi=time*6+20;for(let i=0;i<32;i++){const mid=(lo+hi)/2;if(growthTime(mid)<time)lo=mid;else hi=mid;}return (lo+hi)/2;}
 function updateTimeline(dt){
   let cap;
   if($('auto').checked&&proT<PRO){         // the prologue: nothing has begun yet
     proT+=dt;G=0;t=0;mistIn=0;$('morph').value=0;cap='Prologue';
   }else if($('auto').checked){
     if(proT<PRO+3)proT+=dt;              // (kept running a little past the hold, for the lens's last creep)
-    pt+=dt;while(pt>phases[ph][1]){pt-=phases[ph][1];ph++;}
+    if(emergenceClock===0)riseV=Math.max(.3*RT,Math.hypot(boat.pos[0],boat.pos[1])/9);   // its swell reaches the boat some nine seconds later
+    const g0=growthTime(emergenceClock);emergenceClock+=dt;
+    pt+=growthTime(emergenceClock)-g0;while(pt>phases[ph][1]){pt-=phases[ph][1];ph++;}
     const Tg=globalT();
-    G=M*prof((Tg-VOID)/(12-VOID),0.3);   // growth slows over exactly the stretch in which the sag gathers: an even pace
+    const V0=opening?.25:VOID;            // (after the opening the light has already kept the pause: the stem comes straight through it)
+    G=M*prof((Tg-V0)/(12-V0),0.3);   // growth slows over exactly the stretch in which the sag gathers: an even pace
     t=Tg<=T_BEND?0:prof((Tg-T_BEND)/(T_TOUCH-T_BEND),0.18);
     mistIn=Math.pow(prof((Tg-2)/(T_TOUCH+1-2),0.3),2);   // a faint haze early in the growth (the lens is close then), gathering until the torus is down
     $('morph').value=t;cap=phases[ph][0];
@@ -2468,7 +2535,7 @@ function updateTimeline(dt){
   if(rec)cap+=' · ● Rec';
   $('phase').textContent=cap;
   $('barfill').style.width=(ph===0&&$('auto').checked?G/M:t)*100+'%';
-  seedA=ph===0&&$('auto').checked?sm((pt-0.15)/0.6)*(1-sm((G-1.5)/8)):0;
+  seedA=opening?0:ph===0&&$('auto').checked?sm((pt-0.15)/0.6)*(1-sm((G-1.5)/8)):0;   // (in the opening the seed is the light under the water)
 }
 
 /* =====================================================================
@@ -2517,7 +2584,7 @@ function startRec(){
   rec=new MediaRecorder(cv.captureStream(30),{mimeType:recMime,videoBitsPerSecond:20e6});recChunks=[];
   rec.ondataavailable=e=>{if(e.data&&e.data.size)recChunks.push(e.data);};
   rec.onstop=()=>{download(new Blob(recChunks,{type:recMime}),'arbor-torus.'+(recMime.includes('mp4')?'mp4':'webm'));rec=null;$('record').textContent='Record';};
-  $('auto').checked=true;ph=0;pt=0;G=0;t=0;proT=0;opening=true;boatEpoch=clock+PRO;resetBoatFloat();resetFlow();   // record the whole piece from the prologue
+  $('auto').checked=true;ph=0;pt=0;G=0;t=0;proT=0;emergenceClock=0;opening=true;boatEpoch=clock+PRO;resetBoatFloat();resetFlow();   // record the whole piece from the prologue
   rec.start(500);$('record').textContent='Stop';
 }
 function stopRec(){if(rec&&rec.state!=='inactive')rec.stop();}
@@ -2566,10 +2633,10 @@ cv.addEventListener('touchend',endPinch);cv.addEventListener('touchcancel',endPi
 cv.addEventListener('pointercancel',()=>drag=null);
 $('scale').oninput=e=>{const r=cv.getBoundingClientRect();zoomAt(Math.exp(+e.target.value),r.left+r.width/2,r.top+r.height/2);};
 $('morph').oninput=e=>{$('auto').checked=false;opening=false;proT=PRO;t=+e.target.value;G=M;};
-$('auto').onchange=e=>{if(e.target.checked){G=M;ph=1;pt=Math.max(0,T_BEND+(T_TOUCH-T_BEND)*t-12);}};
+$('auto').onchange=e=>{if(e.target.checked){G=M;ph=1;pt=Math.max(0,T_BEND+(T_TOUCH-T_BEND)*t-12);emergenceClock=growthClockFor(globalT());}};
 ['depth','mer','spread','ratio','vari','twist'].forEach(id=>$(id).oninput=buildTree);
 $('sound').onchange=e=>snd.set(e.target.checked);
-$('regrow').onclick=()=>{$('auto').checked=true;ph=0;pt=0;G=0;t=0;proT=0;opening=true;boatEpoch=clock+PRO;resetBoatFloat();resetFlow();};
+$('regrow').onclick=()=>{$('auto').checked=true;ph=0;pt=0;G=0;t=0;proT=0;emergenceClock=0;opening=true;boatEpoch=clock+PRO;resetBoatFloat();resetFlow();};
 $('lighting').onchange=wake;
 $('reseed').onclick=()=>{seed++;buildTree();};
 $('reset').onclick=()=>{rxU=0;ry=HOME_VIEW.azimuth;rz=0;yaw=0;scale=HOME_VIEW.scale;viewPanX=0;viewPanY=0;$('scale').value=Math.log(scale);camera(t);};
