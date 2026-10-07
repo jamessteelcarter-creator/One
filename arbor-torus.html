@@ -1564,6 +1564,8 @@ function buildStrands(){
   const bodyPush=p=>p[1]<.347?[p[0],.347-(.347-p[1])*.08,p[2]]:p;
   const hatPush=p=>{const h=HAT.height(p);if(h<-.0012)return p;const [ph,r]=HAT.polar(p);if(r>HAT.brim(ph)+.002)return p;
     return V3.add(p,V3.mul(HAT.up,-.0012-h));};                                                    // tucked under the hat
+  const earTuck=p=>{const az=Math.abs(p[2]);if(az<.026||p[1]<.379||p[1]>.4115||p[0]<-.011||p[0]>.0135)return p;   // hair falls behind the ears, not across them
+    const f=sm((az-.026)/.006)*sm((p[1]-.379)/.004)*sm((.4115-p[1])/.004);return [lerp(p[0],.0145,f),p[1],p[2]];};
   // the comb of the hair: back from the forehead, down the sides and the back
   const flow=(p,lock)=>{const h=V3.sub(p,C),sz=h[2]<0?-1:1,side=Math.min(1,Math.abs(h[2])/.028),below=sm((.401-p[1])/.030);
     let f=lock||V3.nrm([1,-.10-.5*side,.30*sz*side]);
@@ -1578,7 +1580,7 @@ function buildStrands(){
       d=V3.nrm(V3.add(V3.mul(d,.62),V3.mul(flow(p,lock),.38)));
       const sd_=V3.crs(d,V3.nrm(V3.sub(p,H.RC)));if(V3.len(sd_)>1e-6)d=V3.nrm(V3.add(d,V3.mul(V3.nrm(sd_),wamp*Math.sin(k*wf+wa))));
       let q=V3.add(p,V3.mul(d,seg));s+=seg;
-      q=hatPush(bodyPush(H.pushOut(q,.0006+layer*.0068*sm(s/.016))));
+      q=hatPush(bodyPush(H.pushOut(earTuck(q),.0006+layer*.0068*sm(s/.016))));
       d=V3.nrm(V3.sub(q,p));out.push(q);}
     return out;}
   const scalpDens=(p,n,uv)=>sm((H.scalpCover(p)-.3)/.4)*sm(earUV(uv)-1)*(1-sm((HAT.height(p)+.002)/.008));   // the crown of his head is under the hat
@@ -1599,7 +1601,7 @@ function buildStrands(){
       for(let j=0;j<3;j++){const g=guides[b[j][1]].pts;p=V3.add(p,V3.mul(V3.sub(at(g,t),g[0]),w[j]/ws));}
       const c=clump*Math.pow(k/N1,1.25);p=V3.add(V3.mul(p,1-c),V3.mul(V3.add(at(G1,t),V3.mul(V3.sub(r.p,G1[0]),1-c)),c));
       const kk=Math.pow(k/N1,1.5);p=V3.add(p,[amp*kk*Math.sin(k*fq[0]+ph[0]),.6*amp*kk*Math.sin(k*fq[1]+ph[1]),amp*kk*Math.sin(k*fq[2]+ph[2])]);
-      if(k)p=hatPush(bodyPush(H.pushOut(p,.0004+.0026*k/N1)));
+      if(k)p=hatPush(bodyPush(H.pushOut(earTuck(p),.0004+.0026*k/N1)));
       P.push(p);}
     const tone=.7+.55*rnd(),light=rnd()<.10,c0=light?[.075,.052,.032]:[.042,.029,.019];
     scalp.push({pts:P,c:c0.map(x=>x*tone),r:rnd()});}
