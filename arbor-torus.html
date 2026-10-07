@@ -404,11 +404,12 @@ void main(){vec2 uv=vU,dv=(vU-uL)*(0.9/48.);float ill=1.;vec3 s=vec3(0.);
   for(int i=0;i<48;i++){uv-=dv;s+=max(texture(uT,uv).rgb-0.035,0.)*ill;ill*=0.955;}   // only bright light scatters
   o=vec4(s/48.,1.);}`;
 const COMP_FS=`#version 300 es
-precision highp float;in vec2 vU;uniform sampler2D uS,uB,uSh;uniform float uBS,uEx,uShS,uFilm,uTime;out vec4 o;
+precision highp float;in vec2 vU;uniform sampler2D uS,uB,uSh,uFog;uniform float uBS,uEx,uShS,uFilm,uTime,uFogOn;out vec4 o;
 void main(){vec2 q=vU-0.5,ca=q*0.004*uFilm;                                   // faint chromatic fringe toward the edges
   vec3 s=vec3(texture(uS,vU-ca).r,texture(uS,vU).g,texture(uS,vU+ca).b);
   vec3 bl=vec3(texture(uB,vU-ca*2.).r,texture(uB,vU).g,texture(uB,vU+ca*2.).b);
   vec3 c=s+bl*uBS+texture(uSh,vU).rgb*uShS;
+  if(uFogOn>.5){vec4 f=texture(uFog,vU);c=c*mix(1.,f.a,.65)+f.rgb;}    // mist over the water: it veils what lies in it, and glows
   c=1.-exp(-c*uEx);                                                   // filmic roll-off: hot cores go white, never clip
   c*=1.-0.35*dot(q,q);
   float n=fract(sin(dot(gl_FragCoord.xy+fract(uTime*7.31)*vec2(113.1,71.7),vec2(12.9898,78.233)))*43758.5453);
@@ -742,7 +743,7 @@ function drawWater(){
 }
 
 /* render targets: an HDR scene buffer and a chain of ever-smaller buffers for the bloom */
-let scene=null,shaft=null,reflT=null,chain=[];
+let scene=null,shaft=null,reflT=null,fogT=null,chain=[];
 function target(w,h){const t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);
   gl.texImage2D(gl.TEXTURE_2D,0,HALF?gl.RGBA16F:gl.RGBA8,w,h,0,gl.RGBA,HALF?gl.HALF_FLOAT:gl.UNSIGNED_BYTE,null);
   gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
@@ -753,8 +754,8 @@ function target(w,h){const t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);
 function freeT(x){if(x){gl.deleteTexture(x.t);gl.deleteFramebuffer(x.f);}}
 function setSize(w,h){
   CW=cv.width=w;CH=cv.height=h;
-  freeT(scene);freeT(shaft);freeT(reflT);chain.forEach(freeT);
-  scene=target(CW,CH);reflT=target(CW,CH);chain=[];
+  freeT(scene);freeT(shaft);freeT(reflT);freeT(fogT);chain.forEach(freeT);
+  scene=target(CW,CH);reflT=target(CW,CH);fogT=target(Math.max(1,CW>>1),Math.max(1,CH>>1));chain=[];
   let cw=CW,ch=CH;for(let i=0;i<6;i++){cw=Math.max(1,cw>>1);ch=Math.max(1,ch>>1);chain.push(target(cw,ch));}
   shaft=target(chain[0].w,chain[0].h);
 }
@@ -2017,6 +2018,7 @@ function boatShadowPass(){
   if(boat.lod===2&&boat.strands){gl.useProgram(P_HAIR_SH.p);drawStrands(P_HAIR_SH,true);}
   gl.disable(gl.POLYGON_OFFSET_FILL);gl.disable(gl.DEPTH_TEST);shadowOn=1;}
 function drawBoat(refl){
+  if(!refl)fogBoat.on=0;
   if(!boat.packets)return;
   // the boat's screen box
   let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;const [blo,bhi]=boat.bounds;
@@ -2052,7 +2054,71 @@ function drawBoat(refl){
   gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,boatTile.t);gl.uniform1i(P_TILE.u.uT,0);
   gl.uniform4f(P_TILE.u.uBox,x0,y0,bw,bh);gl.uniform2f(P_TILE.u.uRes,CW,CH);gl.uniform2f(P_TILE.u.uTex,boatTileW,boatTileH);gl.uniform1f(P_TILE.u.uTH,th);gl.uniform1f(P_TILE.u.uSS,ss);
   gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.drawArrays(gl.TRIANGLES,0,3);
-  gl.blendFunc(gl.ONE,gl.ONE);}
+  gl.blendFunc(gl.ONE,gl.ONE);
+  if(!refl){const [lo,hi]=boat.bounds,E=[Rm[6]*camF*sceneFit,Rm[7]*camF*sceneFit,Rm[8]*camF*sceneFit];
+    Object.assign(fogBoat,{on:1,box:[x0,y0,bw,bh],ss,th,dist:Math.hypot((lo[0]+hi[0])/2-E[0],(lo[1]+hi[1])/2-E[1],(lo[2]+hi[2])/2-E[2])-.1*boat.L});}}
+
+/* =====================================================================
+   Mist over the water. A low layer drifts across the lake, thin about the torus and thickening into a
+   haze toward the horizon, with a shallower bank about the boat that its hull sits in. It is lit by the
+   structure — most where it lies close to the throat and where the arms meet the water, and more when
+   seen against the light — and it veils what lies within it. Marched per pixel at half resolution.
+   ===================================================================== */
+const fogBoat={on:0,box:[0,0,1,1],ss:1,th:1,dist:0};
+const FOG_FS=`#version 300 es
+precision highp float;in vec2 vU;
+uniform mat3 uR;uniform float uS,uF,uPF,uFloor,uTime,uHalf,uGlow,uTouchR,uBoatL,uBoatOn,uBoatDist,uTH,uSS;
+uniform vec2 uRes,uCtr,uBoatXZ,uTex;uniform vec3 uThroat;uniform vec4 uBox;uniform sampler2D uTile;out vec4 o;
+${NOISE_GLSL}
+float dens(vec3 p){
+  float r=length(p.xz)/uPF,y=max(p.y-uFloor,0.)/uPF;
+  vec3 q=vec3(p.x/uPF*2.4+uTime*.012,y*14.,p.z/uPF*2.4+uTime*.005);
+  float n=vnoise(q)*.62+vnoise(q*vec3(2.7,2.,2.7)+7.3)*.38;
+  float nearT=.9*exp(-pow(max(r-.95,0.)/.45,2.)),far=1.6*smoothstep(3.8,6.5,r);   // wisps about the torus; a bank far off on the water
+  return (nearT*exp(-y/.035)+far*exp(-y/.05)+.02*exp(-y/.02))*smoothstep(.22,.78,n);}
+float densB(vec3 p){                                                            // a low, thin drift of mist where the boat is
+  float rb=length(p.xz-uBoatXZ)/uBoatL,yb=max(p.y-uFloor,0.)/uBoatL;
+  vec3 qb=vec3(p.x/uBoatL*.8+uTime*.05,yb*3.,p.z/uBoatL*.8+uTime*.02);
+  return exp(-yb/.10)*(1.-smoothstep(2.,4.,rb))*smoothstep(.35,.75,vnoise(qb)*.65+vnoise(qb*2.1+3.1)*.35);}
+vec3 light(vec3 p,vec3 D){
+  vec3 lp=uThroat-p;float ld=length(lp),c=dot(D,lp/ld),g=.45,ph=.25+.25*(1.-g*g)/pow(1.+g*g-2.*g*c,1.5);
+  float il=1./(1.+pow(ld/(1.1*uPF),2.))+.9*exp(-pow((length(p.xz)-uTouchR)/(.45*uPF),2.))*exp(-max(p.y-uFloor,0.)/(.2*uPF))+.15*exp(-ld/(4.*uPF));
+  return vec3(.30,1.,.50)*uGlow*il*ph*3.5+vec3(.015,.022,.026);}
+void main(){
+  vec2 frag=vec2(gl_FragCoord.x*uHalf,uRes.y-gl_FragCoord.y*uHalf),sp=vec2(frag.x-uCtr.x,-(frag.y-uCtr.y));
+  mat3 Rt=transpose(uR);vec3 Ec=vec3(0.,0.,uF*uPF),E=Rt*Ec,D=normalize(Rt*(vec3(sp/uS,0.)-Ec));
+  float top=uFloor+.14*uPF;
+  if(D.y>=0.&&E.y>=top){o=vec4(0.,0.,0.,1.);return;}
+  float tw=D.y<0.?(uFloor-E.y)/D.y:1e9,tEnd=tw;
+  if(uBoatOn>.5){vec2 f=(frag-uBox.xy)/uBox.zw;               // the mist ends at the boat, where it stands in front of the water
+    if(f.x>0.&&f.y>0.&&f.x<1.&&f.y<1.){vec2 tp=f*uBox.zw*uSS;if(texture(uTile,vec2(tp.x,uTH-tp.y)/uTex).a>.3)tEnd=min(tEnd,uBoatDist);}}
+  float j=fract(sin(dot(gl_FragCoord.xy,vec2(12.9898,78.233))+fract(uTime)*91.7)*43758.5453);
+  vec3 L=vec3(0.);float T=1.;
+  // the drift about the boat, marched finely over the short stretch of ray that passes through it
+  if(uBoatOn>.5){float tb=uFloor+.5*uBoatL,a0=E.y>tb?(tb-E.y)/D.y:0.,a1=min(tEnd,D.y<0.?tw:a0+40.*uBoatL);
+    if(D.y>=0.&&E.y>=tb)a1=a0;
+    vec2 dx=D.xz;float dd=max(dot(dx,dx),1e-6),tc=dot(uBoatXZ-E.xz,dx)/dd,hw=4.2*uBoatL/sqrt(dd);
+    a0=max(a0,tc-hw);a1=min(a1,tc+hw);
+    if(a1>a0){const int NB=24;float dt=(a1-a0)/float(NB);
+      for(int i=0;i<NB;i++){vec3 p=E+D*(a0+(float(i)+j)*dt);float sb=.26*densB(p)/uBoatL;if(sb<1e-8)continue;
+        float a=exp(-sb*dt);L+=T*(1.-a)*light(p,D)*1.4;T*=a;}}}
+  float t0=E.y>top?(top-E.y)/D.y:0.,t1=min(min(tEnd,D.y<0.?tw:1e9),t0+14.*uPF);
+  if(t1>t0){const int N=28;float dt=(t1-t0)/float(N);
+    for(int i=0;i<N;i++){vec3 p=E+D*(t0+(float(i)+j)*dt);float st=.45*dens(p)/uPF;if(st<1e-8)continue;
+      float a=exp(-st*dt);L+=T*(1.-a)*light(p,D);T*=a;}}
+  o=vec4(L,T);}`;
+const P_FOG=program(FS_VS,FOG_FS);
+function drawFog(){
+  const u=P_FOG.u;gl.bindFramebuffer(gl.FRAMEBUFFER,fogT.f);gl.viewport(0,0,fogT.w,fogT.h);gl.disable(gl.BLEND);gl.useProgram(P_FOG.p);
+  gl.uniformMatrix3fv(u.uR,false,[Rm[0],Rm[3],Rm[6],Rm[1],Rm[4],Rm[7],Rm[2],Rm[5],Rm[8]]);
+  gl.uniform1f(u.uS,Scam);gl.uniform1f(u.uF,camF);gl.uniform1f(u.uPF,sceneFit);gl.uniform1f(u.uFloor,floorY);gl.uniform1f(u.uTime,clock);
+  gl.uniform1f(u.uHalf,CW/fogT.w);gl.uniform2f(u.uRes,CW,CH);gl.uniform2f(u.uCtr,CW*ctrX,CH*ctrY);
+  gl.uniform3f(u.uThroat,0,.45*RT,0);gl.uniform1f(u.uTouchR,((+$('hole').value)+2)*RT);
+  gl.uniform1f(u.uGlow,lerp(.55,1,sm(t))*(.3+.7*sm(G/M)));
+  gl.uniform1f(u.uBoatOn,fogBoat.on);gl.uniform2f(u.uBoatXZ,boat.pos[0],boat.pos[1]);gl.uniform1f(u.uBoatL,boat.L);gl.uniform1f(u.uBoatDist,fogBoat.dist);
+  gl.uniform4f(u.uBox,...fogBoat.box);gl.uniform1f(u.uSS,fogBoat.ss);gl.uniform1f(u.uTH,fogBoat.th);gl.uniform2f(u.uTex,boatTileW,boatTileH);
+  gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,boatTile.t);gl.uniform1i(u.uTile,0);
+  gl.bindVertexArray(VAO_EMPTY);gl.drawArrays(gl.TRIANGLES,0,3);}
 
 /* =====================================================================
    Glow points: the seed, growth buds, the flash at every division, the finished tips
@@ -2135,6 +2201,7 @@ function render(clock){
   }
   if(reflOn){gl.bindFramebuffer(gl.FRAMEBUFFER,scene.f);gl.viewport(0,0,CW,CH);gl.blendFunc(gl.ONE,gl.ONE);drawWater();}
   drawBoat(0);
+  drawFog();
   gl.bindVertexArray(VAO_EMPTY);gl.activeTexture(gl.TEXTURE0);
   // bloom: downsample chain, then upsample back with additive accumulation
   gl.disable(gl.BLEND);gl.useProgram(P_DOWN.p);gl.uniform1i(P_DOWN.u.uT,0);
@@ -2154,6 +2221,7 @@ function render(clock){
   gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,scene.t);gl.uniform1i(P_COMP.u.uS,0);
   gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,chain[0].t);gl.uniform1i(P_COMP.u.uB,1);
   gl.activeTexture(gl.TEXTURE2);gl.bindTexture(gl.TEXTURE_2D,shaft.t);gl.uniform1i(P_COMP.u.uSh,2);
+  gl.activeTexture(gl.TEXTURE3);gl.bindTexture(gl.TEXTURE_2D,fogT.t);gl.uniform1i(P_COMP.u.uFog,3);gl.uniform1f(P_COMP.u.uFogOn,1);
   const study=+$('lighting').value>0?sm((t-0.55)/0.43):0;
   gl.uniform1f(P_COMP.u.uBS,lerp(0.16,0.14,study)*(+$('glow').value));gl.uniform1f(P_COMP.u.uEx,lerp(1.35,1.32,study));
   gl.uniform1f(P_COMP.u.uShS,lerp(0.3,0.23,study)*(+$('shafts').value));gl.uniform1f(P_COMP.u.uFilm,+$('film').value);gl.uniform1f(P_COMP.u.uTime,clock);
