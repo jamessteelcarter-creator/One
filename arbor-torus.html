@@ -282,7 +282,7 @@ const LINE_FS=`#version 300 es
 precision highp float;
 in vec2 vP;in float vJ;
 flat in vec2 vA,vB;flat in float vRA,vRB,vBlur,vW,vCap,vRing,vBorn,vFr,vPath;flat in vec3 vCol;
-uniform float uG,uM,uTrS,uTrA,uTrk,uShoot,uLat,uT,uTime,uGrowthLight;uniform highp int uLook;
+uniform float uG,uM,uTrS,uTrA,uTrk,uShoot,uLat,uT,uTime,uGrowthLight,uHeadA;uniform highp int uLook;
 out vec4 o;
 void main(){
   vec2 ba=vB-vA,pa=vP-vA;float hr=dot(pa,ba)/max(dot(ba,ba),1e-6);
@@ -299,7 +299,7 @@ void main(){
   if(vRing>0.5){                     // a ring: latent (a faint trace as it is laid down) until the pulses light it
     float lit=uShoot>0.?1.-smoothstep(vFr,vFr+0.08,h):0.,trace=uG<uM-1e-3?exp(-max(age,0.)/5.):0.;   // vFr: how far the pulse has reached
     c*=mix(uLat*vBorn*(1.+trace),1.,lit);}
-  else if(age>=0.)c+=vec3(0.8,1.,0.8)*0.32*vW*exp(-age/2.5)*uGrowthLight;          // newest growth glows
+  else if(age>=0.)c+=vec3(0.8,1.,0.8)*vW*uGrowthLight*(0.32*exp(-age/2.5)+uHeadA*exp(-age/1.1));   // newest growth glows; the head of light, its trace fading behind it
   if(uTrA>0.&&vRing<0.5){            // one outward wave arrives at the branch tips at water contact
     float w=uM+uTrS,d=w-vJ;
     if(w>=0.&&d>=0.&&d<5.)c+=vec3(0.85,1.,0.85)*vW*uTrA*pow(1.-d/5.,2.)*0.7*smoothstep(uTrk,uTrk+8.,vJ);}
@@ -1445,7 +1445,7 @@ function glowAmount(){if(!opening||!$('auto').checked)return 0;
   const u=glowPhase(),c=clock;
   let I=Math.pow(u,2.3)*(1+.28*Math.exp(-Math.pow((u-.46)/.05,2))+.22*Math.exp(-Math.pow((u-.78)/.045,2)));   // two swells on the way up
   I*=.80+.16*noise1(c*.55)+.08*noise1(c*1.9+7.3)-.05*Math.pow(noise1(c*.21+3.1),6);                         // it breathes, unevenly
-  if(proT>=PRO)I*=(1+.42*sm(emergenceClock/1.8)*Math.exp(-Math.max(0,G-.8)/1.8))*(1-sm((G-1.5)/18));       // a last swell as the stem breaks through it, then it gives way
+  if(proT>=PRO)I*=1-sm(emergenceClock/1.4);                                                              // it leaves the water with the stem: the light is now its head
   return I;}
 // The light rises from deep water. Deep, its light reaches the surface spread wide, dim, bent and broken by the
 // ripples above it; as it nears the surface the patch draws in and brightens, the same light over less water.
@@ -2490,7 +2490,7 @@ function render(clock){
   gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,posTex);gl.uniform1i(U_.uPos,0);
   gl.uniform1i(U_.uLook,+$('lighting').value);
   gl.uniform1f(U_.uG,G);gl.uniform1f(U_.uT,t);gl.uniform1f(U_.uM,M);gl.uniform1f(U_.uD,D);
-  gl.uniform1f(U_.uCanopyFade,canopyFade());gl.uniform1f(U_.uGrowthLight,growthLight());
+  gl.uniform1f(U_.uCanopyFade,canopyFade());gl.uniform1f(U_.uGrowthLight,growthLight());gl.uniform1f(U_.uHeadA,headAmp());
   gl.uniform1i(U_.uDI,D);gl.uniform1i(U_.uDmI,Dm);gl.uniform1i(U_.uNGI,NG);
   gl.uniform1iv(U_['uOff[0]'],flowOff);gl.uniform1iv(U_['uNk[0]'],flowNk);gl.uniform1iv(U_['uPs[0]'],flowPs);gl.uniform1iv(U_['uOrd[0]'],ordI);
   gl.uniform1f(U_.uW0,Math.max(2.2*dpr,Math.min(CW,CH)*0.0085)*Math.sqrt(scale*zoomF));
@@ -2519,10 +2519,14 @@ function render(clock){
     if(growthLight()>0.001){const g_=P_GROW,u=g_.u;gl.useProgram(g_.p);gl.uniform1i(u.uPos,0);gl.uniform1i(u.uDmI,Dm);gl.bindVertexArray(VAO_EMPTY);setProj(g_,1,refl);
       const draw=(mode,k,q,fr,rad,a)=>{gl.uniform1i(u.uMode,mode);gl.uniform1i(u.uK,k);gl.uniform1i(u.uNk,nSeg[k]);gl.uniform1i(u.uOff0,flowOff[k]);
         gl.uniform1i(u.uQ,q);gl.uniform1f(u.uFr,fr);gl.uniform1f(u.uRad,rad);gl.uniform1f(u.uA,a);gl.drawArrays(gl.POINTS,0,1<<k);};
-      for(let k=1;k<=D;k++){const uu=(G-pStart[k])/3;if(uu<0||uu>=1)continue;           // each division flashes
+      const hs=headState();
+      if(hs){if(hs.k>=1&&hs.x<.45){const f=hs.x/.45;                                            // the fork flashes as the light divides
+          draw(1,hs.k-1,0,0,(2+16*Math.sqrt(f))*dpr,.95*(1-f)*(1-f)*hs.cap*growthLight());}}
+      else for(let k=1;k<=D;k++){const uu=(G-pStart[k])/3;if(uu<0||uu>=1)continue;           // each division flashes
         draw(1,k-1,0,0,(1.5+10*uu)*dpr,0.28*(1-uu)*Math.min(1,Math.pow(2,8-k))*growthLight());}
-      if(G>0.02){const x=Math.min(M-1e-3,G),k=lev[x|0],qf=x-pStart[k],q0=Math.floor(qf);  // and the growing tips glow
-        draw(0,k,q0,qf-q0,1.0*dpr,0.22*Math.min(1,Math.pow(2,8-k))*growthLight());}}
+      if(G>0.02){const x=Math.min(M-1e-3,G),k=lev[x|0],qf=x-pStart[k],q0=Math.floor(qf);  // and the growing tips glow: the heads of light
+        if(hs)draw(0,k,q0,qf-q0,(1.1+1.6*hs.hb)*dpr,(.30+.70*hs.hb)*hs.cap*growthLight());
+        else draw(0,k,q0,qf-q0,1.0*dpr,0.22*Math.min(1,Math.pow(2,8-k))*growthLight());}}
     if(headA>0.002){const H_=P_HEAD,u=H_.u;gl.useProgram(H_.p);gl.uniform1i(u.uPos,0);
       gl.uniform1i(u.uDI,D);gl.uniform1i(u.uDmI,Dm);gl.uniform1i(u.uRh,Rh);gl.uniform1i(u.uNGI,NG);
       gl.uniform1iv(u['uOff[0]'],flowOff);gl.uniform1iv(u['uNk[0]'],flowNk);gl.uniform1iv(u['uPs[0]'],flowPs);gl.uniform1iv(u['uOrd[0]'],ordI);
@@ -2576,18 +2580,35 @@ const VOID=0.15,T_BEND=9.3,T_TOUCH=22.5,phases=[['I · Genesis',12],['II · Bloo
 const globalT=()=>ph===0?pt:ph===1?12+pt:T_TOUCH+pt;
 let ph=0,pt=0,G=0,t=0,emergenceClock=0;
 // The earlier rise: a gentle start eases into the original pace over eight seconds.
-// The rise: it begins at a fifth of its full pace and gathers smoothly to that pace, reached just before the canopy
-// begins to fall (structure time RISE_T1). This one curve replaces the original gentle start, so the two never compound.
-const RISE_S0=.2,RISE_T1=8.3,RISE_E1=(RISE_T1-VOID-.15*(12-VOID))/((1+RISE_S0)/2);
-function riseDist(e){const x=clamp01(e/RISE_E1);return e>=RISE_E1?RISE_E1*(1+RISE_S0)/2+(e-RISE_E1):RISE_S0*e+(1-RISE_S0)*RISE_E1*(x*x*x-.5*x*x*x*x);}
-function growthTime(e){if(e<=0)return 0;if(e>=RISE_E1)return RISE_T1+(e-RISE_E1);
-  const vv=1/.7,r=.3,p=riseDist(e)*vv/(12-VOID),f=p<.5*vv*r?Math.sqrt(2*r*p/vv):p/vv+r/2;   // (inverting the original curve's start)
-  return VOID+(12-VOID)*f;}
+// The growth is told in beats, one per generation, not by length: the branches shorten every generation, so a pace set
+// by length would cram the whole cascade of forks into a few seconds. Each beat gives a generation's light time to
+// run its branches and flash at the fork; the beats quicken as the forks multiply, fastest as the canopy begins to fall.
+const BEAT=[4.2,1.6,1.5,1.4,1.25,1.1,1.0,.92,.85,.78,.72,.68,.64,.62,.6,.6];
+const beatLen=k=>BEAT[Math.min(k,BEAT.length-1)];
+function beatAt(e){if(e<=0)return [0,0];let a=0;for(let k=0;k<=D;k++){const d=beatLen(k);if(e<a+d)return [k,(e-a)/d];a+=d;}return [D+1,1];}
+// the trunk starts slow and heavy and gathers pace; along each branch the light strides, easing into every fork
+const beatProgress=(k,x)=>k===0?.2*x+1.6*(x*x*x-.5*x*x*x*x):x-.6*Math.sin(TAU*x)/TAU;
+function beatG(e){const [k,x]=beatAt(e);if(k>D)return M;const g0=pStart[k],g1=k<D?pStart[k+1]:M;return g0+(g1-g0)*beatProgress(k,x);}
+// The structure's own clock (the canopy's fall, the mist, the phases) reaches the bend exactly when the beats reach the
+// generation at which it always fell, and runs at its usual rate from there.
+let bendCache=null;
+function bendClock(){const key=D+':'+pStart.join(',');if(bendCache&&bendCache.key===key)return bendCache.e;
+  const Gb=M*prof((T_BEND-VOID)/(12-VOID),0.3);let lo=0,hi=60;for(let i=0;i<40;i++){const m=(lo+hi)/2;if(beatG(m)<Gb)lo=m;else hi=m;}
+  bendCache={key,e:Math.min((lo+hi)/2,2*T_BEND-.01)};return bendCache.e;}
+function growthTime(e){if(e<=0)return 0;const eb=bendClock();if(e>=eb)return T_BEND+(e-eb);
+  const x=e/eb,b=eb-T_BEND,a=2*T_BEND-eb;return a*x+b*x*x;}
 function growthClockFor(time){let lo=0,hi=time*6+20;for(let i=0;i<32;i++){const mid=(lo+hi)/2;if(growthTime(mid)<time)lo=mid;else hi=mid;}return (lo+hi)/2;}
 // The canopy and its growth glow settle together over 2.8 real seconds as the bend begins.
 const CANOPY_FADE_SECONDS=2.8;
 function canopyFade(){return $('auto').checked?sm((emergenceClock-growthClockFor(T_BEND))/CANOPY_FADE_SECONDS):t>0?1:0;}
 function growthLight(){return $('auto').checked?1-canopyFade():0;}
+// The head of light at the cutting edge: it flashes at every fork, fades as it runs along the branch (leaving the
+// structure's steady glow behind it) and flashes again at the next. Each head is capped as they multiply, so the early
+// forks blaze and the late front glitters rather than burning white.
+const headCap=k=>Math.min(1,Math.pow(2,(5-k)/1.6));
+function headState(){if(!opening||!$('auto').checked||proT<PRO)return null;const [k,x]=beatAt(emergenceClock);if(k>D)return null;
+  const hb=k===0?.35+.65*Math.exp(-x*1.6):Math.exp(-x*3.4);return {k,x,hb,cap:headCap(k)};}
+function headAmp(){const h=headState();return h?(.35+1.9*h.hb)*h.cap:0;}
 function updateTimeline(dt){
   let cap;
   if($('auto').checked&&proT<PRO){         // the prologue: nothing has begun yet
@@ -2597,7 +2618,7 @@ function updateTimeline(dt){
     const oldGrowth=growthTime(emergenceClock);emergenceClock+=dt;
     pt+=growthTime(emergenceClock)-oldGrowth;while(pt>phases[ph][1]){pt-=phases[ph][1];ph++;}
     const Tg=globalT();
-    G=M*prof((Tg-VOID)/(12-VOID),0.3);   // growth slows over exactly the stretch in which the sag gathers: an even pace
+    G=opening?beatG(emergenceClock):M*prof((Tg-VOID)/(12-VOID),0.3);   // (in the piece: by beats; otherwise the original even pace)
     t=Tg<=T_BEND?0:prof((Tg-T_BEND)/(T_TOUCH-T_BEND),0.18);
     mistIn=Math.pow(prof((Tg-2)/(T_TOUCH+1-2),0.3),2);   // a faint haze early in the growth (the lens is close then), gathering until the torus is down
     $('morph').value=t;cap=phases[ph][0];
