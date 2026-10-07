@@ -1,0 +1,1815 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Arbor Torus · Lighting studies</title>
+<style>
+  :root{--g:#39ff14;--txt:#b4f7cb}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:#000;overflow:hidden;color:var(--txt);
+    font:400 10px/1.4 "Helvetica Neue",Helvetica,Inter,system-ui,sans-serif;letter-spacing:.16em;text-transform:uppercase}
+  canvas{display:block;width:100vw;height:100vh;cursor:grab;touch-action:none}
+  canvas:active{cursor:grabbing}
+  #title{position:fixed;top:26px;left:30px;font-size:11px;letter-spacing:.46em;color:#d6ffe2}
+  #title b{font-weight:400;color:var(--g);text-shadow:0 0 10px #39ff1499}
+  #sub{position:fixed;top:46px;left:30px;font-size:8.5px;letter-spacing:.32em;opacity:.4}
+  #panel{position:fixed;top:84px;left:30px;width:228px;max-height:calc(100vh - 150px);overflow-y:auto;scrollbar-width:none;opacity:.22}
+  #panel:hover,#panel:focus-within{opacity:1}
+  #panel.hide .body{display:none}
+  #panel.hide{opacity:.55}
+  #panel.hide:hover,#panel.hide:focus-within{opacity:1}
+  #tg{background:none;border:0;padding:0;color:var(--txt);font:inherit;letter-spacing:inherit;opacity:.6;cursor:pointer}
+  #tg:hover{opacity:1}
+  hr{border:0;border-top:1px solid #39ff141c;margin:10px 0}
+  .row{display:flex;justify-content:space-between;align-items:center;height:25px;cursor:pointer}
+  .row>span:first-child{opacity:.7}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:118px;height:16px;margin:0;background:transparent;cursor:pointer}
+  input[type=range]::-webkit-slider-runnable-track{height:1px;background:#39ff1440}
+  input[type=range]::-moz-range-track{height:1px;background:#39ff1440}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:9px;height:9px;margin-top:-4px;border-radius:50%;
+    background:#000;border:1px solid var(--g);box-shadow:0 0 8px #39ff1488}
+  input[type=range]::-moz-range-thumb{width:8px;height:8px;border-radius:50%;background:#000;border:1px solid var(--g);box-shadow:0 0 8px #39ff1488}
+  .sw{position:relative;width:26px;height:12px}
+  .sw input{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer;z-index:1}
+  .sw i{position:absolute;inset:0;border:1px solid #39ff1450;border-radius:6px}
+  .sw i:after{content:"";position:absolute;top:2px;left:2px;width:6px;height:6px;border-radius:50%;background:#39ff1460;transition:.25s}
+  .sw input:checked+i:after{left:16px;background:var(--g);box-shadow:0 0 6px var(--g)}
+  .btns{display:flex;gap:6px;margin-top:10px}
+  .btns button{flex:1;background:transparent;border:1px solid #39ff1430;color:var(--txt);font:inherit;letter-spacing:.2em;padding:7px 0;cursor:pointer;transition:.25s}
+  .btns button:hover{border-color:var(--g);color:#fff;box-shadow:inset 0 0 12px #39ff1430}
+  .btns button:disabled{opacity:.3;cursor:default}
+  #cap{position:fixed;left:50%;bottom:36px;transform:translateX(-50%);text-align:center;font-size:10px;letter-spacing:.55em;color:#d6ffe2;pointer-events:none;white-space:nowrap}
+  #bar{width:170px;height:1px;margin:13px auto 0;background:#39ff1420;position:relative}
+  #bar i{position:absolute;left:0;top:0;bottom:0;width:0;background:var(--g);box-shadow:0 0 6px var(--g)}
+  #hint{position:fixed;right:30px;bottom:32px;font-size:8.5px;letter-spacing:.26em;line-height:2.1;text-align:right;opacity:.32;pointer-events:none}
+  #title,#sub,#panel,#hint,#cap,#lightingbar{transition:opacity .9s}
+  /* presentation mode: the interface steps away when you are not using it */
+  body.idle #title,body.idle #sub,body.idle #panel,body.idle #hint,body.idle #lightingbar,
+  body.noui #title,body.noui #sub,body.noui #panel,body.noui #hint,body.noui #lightingbar{opacity:0!important;pointer-events:none}
+  body.idle #cap,body.noui #cap{opacity:.5}
+  body.idle canvas{cursor:none}
+  #nogl{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:30px;letter-spacing:.3em;line-height:2}
+  @media (hover:none){#panel{opacity:.85}}
+  @media (max-width:640px){#hint{display:none}#cap{bottom:20px}#panel{width:200px}input[type=range]{width:96px}}
+
+  #lightingbar{position:fixed;top:22px;right:110px;display:flex;align-items:center;gap:12px;z-index:3;font-size:11px;letter-spacing:.12em}
+  #lightingbar[hidden]{display:none}
+  #lightingbar label{opacity:.72}
+  #lighting{background:#07100c;color:#d6ffe2;border:1px solid #39ff1440;padding:8px 10px;font:400 12px Helvetica,Arial,sans-serif;letter-spacing:.02em;border-radius:2px;max-width:180px}
+  #lighting:focus-visible{outline:2px solid #b4f7cb;outline-offset:3px}
+  @media(max-width:740px){#lightingbar{top:68px;left:30px;right:auto}#panel{top:116px;max-height:calc(100vh - 184px)}#cap{white-space:normal;width:calc(100% - 32px);letter-spacing:.35em}}
+</style>
+</head>
+<body>
+<canvas id="c" role="img" aria-label="Interactive Arbor to Torus artwork with three lighting treatments"></canvas>
+<div id="lightingbar" hidden><label for="lighting">Lighting</label><select id="lighting" class="cursor-interaction" aria-label="Lighting treatment">
+  <option value="0">Original</option>
+  <option value="1">Sparse strands</option>
+  <option value="2">Layered depth</option>
+  <option value="3" selected>Travelling light</option>
+</select></div>
+<div id="title">Arbor <b>→</b> Torus</div>
+<div id="sub">Twin fractal growth · toroidal closure</div>
+<div id="panel" class="hide">
+  <button id="tg" type="button" aria-expanded="false" aria-controls="controlbody lightingbar">+ Controls</button>
+  <div class="body" id="controlbody">
+    <hr>
+    <label class="row"><span>Morph</span><input id="morph" type="range" min="0" max="1" step="0.001" value="0"></label>
+    <label class="row"><span>Generations</span><input id="depth" type="range" min="8" max="15" step="1" value="15"></label>
+    <label class="row"><span>Meridians</span><input id="mer" type="range" min="4" max="6" step="1" value="6"></label>
+    <label class="row"><span>Fork angle</span><input id="spread" type="range" min="0.6" max="1.5" step="0.01" value="0.6"></label>
+    <label class="row"><span>Length ratio</span><input id="ratio" type="range" min="0.7" max="0.88" step="0.005" value="0.88"></label>
+    <label class="row"><span>Variation</span><input id="vari" type="range" min="0" max="0.5" step="0.01" value="0"></label>
+    <label class="row"><span>Twist</span><input id="twist" type="range" min="-2" max="2" step="0.01" value="-2"></label>
+    <label class="row"><span>Ring radius</span><input id="hole" type="range" min="0" max="0.6" step="0.01" value="0"></label>
+    <label class="row"><span>Rings</span><input id="rings" type="range" min="8" max="40" step="1" value="22"></label>
+    <label class="row"><span>Glow</span><input id="glow" type="range" min="0" max="2" step="0.01" value="1"></label>
+    <label class="row"><span>Light shafts</span><input id="shafts" type="range" min="0" max="2" step="0.01" value="1"></label>
+    <label class="row"><span>Reflection</span><input id="refl" type="range" min="0.25" max="1" step="0.01" value="0.7"></label>
+    <label class="row"><span>Film</span><input id="film" type="range" min="0" max="1" step="0.01" value="1"></label>
+    <label class="row"><span>Scale</span><input id="scale" type="range" min="0.3" max="30" step="0.01" value="1.14"></label>
+    <hr>
+    <label class="row"><span>Auto-play</span><span class="sw"><input id="auto" type="checkbox" checked><i></i></span></label>
+    <label class="row"><span>Sound</span><span class="sw"><input id="sound" type="checkbox"><i></i></span></label>
+    <label class="row"><span>Auto-spin</span><span class="sw"><input id="spin" type="checkbox"><i></i></span></label>
+    <label class="row"><span>Flow</span><span class="sw"><input id="flow" type="checkbox" checked><i></i></span></label>
+    <label class="row"><span>Flow speed</span><input id="speed" type="range" min="0.3" max="2.5" step="0.01" value="1"></label>
+    <div class="btns"><button id="regrow">Regrow</button><button id="reseed">Reseed</button><button id="reset">View</button></div>
+    <div class="btns"><button id="still">4K still</button><button id="record">Record</button></div>
+  </div>
+</div>
+<div id="cap"><div id="phase">I · Genesis</div><div id="bar"><i id="barfill"></i></div></div>
+<div id="hint">Drag · rotate<br>Shift / right-drag · roll<br>Scroll / pinch · zoom<br>Option / Alt-drag · pan<br>H · hide interface</div>
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+const cv=$('c');
+const gl=cv.getContext('webgl2',{antialias:false,alpha:false,depth:false,stencil:false,premultipliedAlpha:false,preserveDrawingBuffer:false,powerPreference:'high-performance'});
+if(!gl){document.body.insertAdjacentHTML('beforeend','<div id="nogl">This piece needs WebGL 2 — please open it in a current version of Chrome, Edge, Firefox or Safari.</div>');throw new Error('WebGL2 unavailable');}
+const HALF=!!gl.getExtension('EXT_color_buffer_float');
+gl.getExtension('OES_texture_float_linear');
+const GPU=HALF;          // float render targets: the morph and the flow both run on the graphics card
+
+const TAU=Math.PI*2,M=96,TEXW=2048,FW=256;  // M = segments per root-to-tip path (= half a meridian); FW² flow particles
+const KZ=3,ZG=2.8;   // torus is KZ× the tree's extent (the bloom zooms out KZ×); growth zooms out ZG× from the seed
+const clamp01=x=>x<0?0:x>1?1:x,sm=x=>{x=clamp01(x);return x*x*(3-2*x);},lerp=(a,b,t)=>a+(b-a)*t;
+const pos2pi=a=>((a%TAU)+TAU)%TAU;
+function rng(seed){return()=>{seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);
+  t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+
+/* =====================================================================
+   GPU plumbing
+   ===================================================================== */
+let CW=1,CH=1,dpr=1;
+function compile(type,src){const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);
+  if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(s));return s;}
+function program(vs,fs){const p=gl.createProgram();gl.attachShader(p,compile(gl.VERTEX_SHADER,vs));gl.attachShader(p,compile(gl.FRAGMENT_SHADER,fs));
+  gl.linkProgram(p);if(!gl.getProgramParameter(p,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(p));
+  const u={},n=gl.getProgramParameter(p,gl.ACTIVE_UNIFORMS);
+  for(let i=0;i<n;i++){const a=gl.getActiveUniform(p,i);u[a.name]=gl.getUniformLocation(p,a.name);}
+  return {p,u};}
+const PROJ=`
+uniform mat3 uR;uniform float uSg,uS,uPF,uF,uRefl,uFloor,uTime;uniform vec2 uRes,uCtr;
+float gDepth;     // depth below the water surface (reflected geometry only)
+vec3 proj(vec3 p){float Y=uSg*p.y;gDepth=0.;
+  if(uRefl>0.5){Y=2.*uFloor-Y;gDepth=(uFloor-Y)/uPF;
+  }
+  vec3 q=uR*vec3(p.x,Y,p.z);float k=uF/max(0.5,uF-q.z/uPF);return vec3(uCtr+vec2(q.x,-q.y)*uS*k,q.z);}
+vec4 toClip(vec2 P){return vec4(P.x/uRes.x*2.-1.,1.-P.y/uRes.y*2.,0.,1.);}`;
+
+/* Branches are drawn as instanced quads; each fragment measures its distance to a tapered
+   capsule, which gives perfectly smooth lines of any thickness with flowing forks. Out of focus,
+   the cross-section becomes a lens disc with a bright rim: bokeh rather than a plain blur. */
+const COLLAPSE_CURVE=`
+float collapseSoftness(float t){return smoothstep(0.025,0.22,t)*(1.-smoothstep(0.90,1.,t));}
+vec3 flowingCurve(vec3 prev,vec3 a,vec3 b,vec3 next,float f,float t){
+  float L=max(length(b-a),1e-6);
+  vec3 ta=0.5*(b-prev),tb=0.5*(next-a);
+  ta*=min(1.,1.5*L/max(length(ta),1e-6));tb*=min(1.,1.5*L/max(length(tb),1e-6));
+  float f2=f*f,f3=f2*f;
+  vec3 p=(2.*f3-3.*f2+1.)*a+(f3-2.*f2+f)*ta+(-2.*f3+3.*f2)*b+(f3-f2)*tb;
+  return mix(mix(a,b,f),p,collapseSoftness(t));}`;
+const LINE_VS=`#version 300 es
+precision highp float;precision highp int;
+layout(location=0) in vec2 aC;
+layout(location=3) in vec4 aM;          // segment index j, generation at start, generation at end, kind
+${PROJ}
+uniform highp sampler2D uPos;           // every segment's live end points, computed on the GPU each frame
+uniform int uMode,uDI,uDmI,uRh,uNGI,uParts;uniform int uOff[16],uNk[16],uPs[16],uOrd[64];
+uniform float uG,uT,uW0,uDpr,uM,uD,uDm,uTwig,uFold,uRing,uShoot,uFlash,uDens;uniform highp int uLook;
+out vec2 vP;out float vJ;flat out float vPath;
+flat out vec2 vA,vB;flat out float vRA,vRB,vBlur,vW,vCap,vRing,vBorn,vFr;flat out vec3 vCol;
+vec3 tex(int i){return texelFetch(uPos,ivec2(i%${TEXW},i/${TEXW}),0).xyz;}
+${COLLAPSE_CURVE}
+vec3 merPt(int g,int j){                // the point j (1…M) along meridian g
+  int jj=j-1,k=0;for(int i=1;i<16;i++){if(i>uDI)break;if(jj>=uPs[i])k=i;}
+  int s=k<=uDmI?g:g<<(k-uDmI);return tex((uOff[k]+s*uNk[k]+jj-uPs[k])*2+1);}
+float wid(float gen,float jj){float age=clamp((uG-jj)/(uM*0.35),0.,1.);
+  return max(0.08*uDpr,uW0*pow(0.7,gen)*(0.35+0.65*age));}     // continuous taper; branches thicken as they mature
+void main(){
+  vec3 aA,aB;vec4 m=aM;float fr,span=1.;vBorn=1.;vFr=0.;
+  if(uMode==0){
+    // Folded-away twigs need no curve samples.
+    float kind=mod(m.w,10.);
+    if(kind>0.5&&kind<1.5&&uTwig*mix(1.,exp2(uDm-floor(m.y+1e-4)),uFold)<0.003){gl_Position=vec4(2.,2.,2.,1.);return;}
+    int i=gl_InstanceID/uParts;aA=tex(i*2);aB=tex(i*2+1);fr=clamp(uG-m.x,0.,1.);
+    if(uParts>1){
+      int k=int(floor(m.y+1e-4)),nk=uNk[k],s=(i-uOff[k])/nk,q=i-uOff[k]-s*nk;
+      vec3 prev=aA-(aB-aA),next=aB+(aB-aA);
+      if(q>0)prev=tex((i-1)*2);
+      else if(k>0){int ps=k>uDmI?s>>1:s;prev=tex((uOff[k-1]+ps*uNk[k-1]+uNk[k-1]-1)*2);}
+      if(q<nk-1)next=tex((i+1)*2+1);
+      else if(k<uDI){int ns=k<uDmI?s:s<<1;next=tex((uOff[k+1]+ns*uNk[k+1])*2+1);}
+      span=1./float(uParts);float f0=float(gl_InstanceID%uParts)*span,f1=f0+span;
+      vec3 a=aA,b=aB;aA=flowingCurve(prev,a,b,next,f0,uT);aB=flowingCurve(prev,a,b,next,f1,uT);
+      fr=clamp((fr-f0)/span,0.,1.);m.x+=f0;m.y=mix(aM.y,aM.z,f0);m.z=mix(aM.y,aM.z,f1);
+      if(f1<0.999&&m.w>9.5)m.w-=10.;
+    }
+  }
+  else{  // a latitude ring joins every meridian's point at one moment of the growth: the shape of the growth front
+         // at that moment. It is laid down faintly inside the canopy as the front passes, stretched outward with the
+         // canopy as it opens. At water contact, light spreads sideways between neighbouring meridians.
+    int e=gl_InstanceID>>1,mm=e%uNGI,qr=e/uNGI+1,jr=int(floor(float(qr)*uM/float(uRh)+0.5));
+    vec3 P0=merPt(uOrd[mm],jr),P1=merPt(uOrd[(mm+1)%uNGI],jr);
+    bool s0=(gl_InstanceID&1)==0;vec3 Pm=s0?P0:P1,mid=0.5*(P0+P1);aA=Pm;
+    vBorn=clamp((uG-float(jr)+4.)/4.,0.,1.);
+    int kr=0;for(int i=1;i<16;i++){if(i>uDI)break;if(jr-1>=uPs[i])kr=i;}
+    vBorn*=mix(kr>=uDmI?1.:0.,1.,smoothstep(0.15,0.5,uT));   // while the tree stands they live in the crown; the inner
+                                                             // rings open out of the trunk as the meridians part
+    // each meridian carries its piece of the ring: a short horizontal node, stretched sideways as the canopy opens
+    vec3 T=vec3(-Pm.z,0.,Pm.x);float tl=length(T),hc=0.5*length(P1-P0);
+    T=tl>1e-6?T/tl:vec3(1.,0.,0.);if(dot(T,(s0?P1:P0)-Pm)<0.)T=-T;
+    float tick=min(hc*mix(0.25,0.45,uT),mix(0.004,0.012,uT)*uPF);
+    if(uShoot<=0.){aB=Pm+T*tick;fr=vBorn>0.&&tick>1e-6?1.:0.;vFr=1.;}
+    else{aB=mid;vFr=hc>1e-6?max(uShoot,tick/hc):1.;fr=vBorn>0.?vFr:0.;vFr=uShoot/max(vFr,1e-6);}
+    m=vec4(float(jr),0.,0.,2.);}
+  float j=m.x,kind=mod(m.w,10.);bool term=m.w>9.5,ring=kind>1.5&&kind<2.5;
+  float w=1.,lv=floor(m.y+1e-4);
+  if(kind>0.5&&kind<1.5)w=uTwig*mix(1.,exp2(uDm-lv),uFold);   // folded twigs share their strand's brightness: no stacking
+  else if(ring)w=uRing;
+  else if(lv<=uDm){                 // strands that start out coincident share one line's brightness until they separate
+    float c=exp2(uDm-lv);w=uT<=0.?(kind>2.5?0.:1.):mix(1./c,1.,pow(uT,1.5));}
+  if(fr<=0.||w<0.003){gl_Position=vec4(2.,2.,2.,1.);return;}
+  vec3 pa=proj(aA);float da=gDepth;vec3 pb=proj(mix(aA,aB,fr));float dep=0.5*(da+gDepth);
+  float ga=m.y,gb=mix(m.y,m.z,fr),rA,rB;
+  if(ring){rA=rB=0.42*uDpr;}
+  else{rA=0.5*mix(wid(ga,j),0.9*uDpr,uT);rB=0.5*mix(wid(gb,j+fr*span),0.9*uDpr,uT);}
+  // These studies change illumination, not the geometry. Their influence
+  // arrives late in the bloom so the original branching remains intact.
+  vec3 midP=0.5*(aA+aB);
+  float az=atan(midP.z,midP.x);
+  float radial=length(midP.xz)/uPF;
+  float study=smoothstep(0.55,0.98,uT);
+  vPath=pow(0.5+0.5*cos(az*6.+0.3),12.)*smoothstep(0.025,0.13,radial);
+  float zn=0.5*(pa.z+pb.z)/uPF;
+  float blur=0.;                     // everything stays sharp
+  float inten=w;
+  if(uRefl>0.5)inten*=exp(-0.35*dep);
+  float dz=clamp(0.5+0.5*zn,0.,1.);
+  inten*=uDens*(0.18+0.82*pow(dz,1.3));
+  if(!ring)inten*=mix(pow(0.75,max(0.,ga-6.)),1.,uT);   // finer generations add filigree, not brightness
+  if(uLook==1){
+    // Eight softly selected meridian families; the rest stay as faint traces.
+    float selected=pow(0.5+0.5*cos(az*8.+0.45),7.);
+    inten*=mix(1.,ring?0.18:0.12+1.28*selected,study);
+    rA*=mix(1.,0.84,study);rB*=mix(1.,0.84,study);
+  }else if(uLook==2){
+    // Near strands carry the light. Far strands are cool and low in contrast.
+    float depthGain=(0.045+1.22*pow(dz,2.4))/(0.18+0.82*pow(dz,1.3));
+    inten*=mix(1.,depthGain*(ring?0.46:1.12),study);
+    float nearWidth=mix(0.65,1.05,dz);
+    rA*=mix(1.,nearWidth,study);rB*=mix(1.,nearWidth,study);
+  }else if(uLook==3){
+    // A subdued scaffold gives a few travelling paths space to be seen.
+    inten*=mix(1.,ring?0.12:0.36,study);
+  }
+  if(uLook>0)inten*=1.-0.12*study*(1.-smoothstep(0.02,0.12,radial));
+  // colour carries age: deep green trunk → pale new growth, blending into the torus
+  vec3 ageC=mix(vec3(0.05,0.5,0.24),vec3(0.55,1.,0.66),pow(clamp(ga/uD,0.,1.),0.85));
+  vec3 tor=vec3(0.3,1.,0.34);
+  vec3 base=ring?tor:mix(ageC,tor,uT*0.85);
+  base=mix(vec3(0.,0.42,0.3),base,0.35+0.65*dz);
+  if(uLook==2){
+    vec3 depthCol=mix(vec3(0.025,0.23,0.22),vec3(0.46,1.,0.60),smoothstep(0.10,0.92,dz));
+    base=mix(base,depthCol,study*0.72);
+  }
+  vCol=base*inten*(ring?1.+uFlash:1.);vW=w*(uRefl>0.5?exp(-0.35*dep):1.);vRing=ring?1.:0.;   // a new ring gleams, then settles
+  vec2 a=pa.xy,b=pb.xy,d=b-a;float L=length(d);d=L>1e-4?d/L:vec2(1.,0.);vec2 n=vec2(-d.y,d.x);
+  vBlur=blur;
+  float ext=max(max(rA,rB),0.5)+blur+2.;
+  vec2 P=(aC.x<0.5?a-d*ext:b+d*ext)+n*aC.y*ext;
+  vP=P;vA=a;vB=b;vRA=rA;vRB=rB;vJ=ring?j:mix(j,j+fr*span,aC.x);vCap=(term||fr<1.)?1.:0.;
+  gl_Position=toClip(P);
+}`;
+const LINE_FS=`#version 300 es
+precision highp float;
+in vec2 vP;in float vJ;
+flat in vec2 vA,vB;flat in float vRA,vRB,vBlur,vW,vCap,vRing,vBorn,vFr,vPath;flat in vec3 vCol;
+uniform float uG,uM,uTrS,uTrA,uTrk,uShoot,uLat,uT,uTime;uniform highp int uLook;
+out vec4 o;
+void main(){
+  vec2 ba=vB-vA,pa=vP-vA;float hr=dot(pa,ba)/max(dot(ba,ba),1e-6);
+  if(hr<0.||(hr>1.&&vCap<0.5))discard;      // flush joints along a branch: no doubled beads where segments meet
+  float h=clamp(hr,0.,1.);
+  float r=mix(vRA,vRB,h),rr=max(r,0.5),thin=min(1.,r/0.5);
+  float dist=length(pa-ba*h);
+  float sharp=clamp(0.5-(dist-rr),0.,1.)*thin;
+  float R=rr+vBlur;
+  float cov=sharp;
+  if(cov<=0.)discard;
+  vec3 c=vCol;
+  float age=uG-vJ;
+  if(vRing>0.5){                     // a ring: latent (a faint trace as it is laid down) until the pulses light it
+    float lit=uShoot>0.?1.-smoothstep(vFr,vFr+0.08,h):0.,trace=uG<uM-1e-3?exp(-max(age,0.)/5.):0.;   // vFr: how far the pulse has reached
+    c*=mix(uLat*vBorn*(1.+trace),1.,lit);}
+  else if(uG<uM&&age>=0.)c+=vec3(0.8,1.,0.8)*0.32*vW*exp(-age/2.5);          // newest growth glows
+  if(uTrA>0.&&vRing<0.5){            // one outward wave arrives at the branch tips at water contact
+    float w=uM+uTrS,d=w-vJ;
+    if(w>=0.&&d>=0.&&d<5.)c+=vec3(0.85,1.,0.85)*vW*uTrA*pow(1.-d/5.,2.)*0.7*smoothstep(uTrk,uTrk+8.,vJ);}
+  if(uLook==3&&vRing<0.5&&uShoot>0.){
+    float phase=fract(vJ/uM-uTime*0.12+0.5)-0.5;
+    float moving=exp(-pow(phase/0.085,2.));
+    c+=vec3(0.50,1.,0.68)*vW*vPath*moving*0.68*smoothstep(0.55,0.98,uT)*uShoot;
+  }
+  o=vec4(c*cov,1.);
+}`;
+const PT_VS=`#version 300 es
+precision highp float;
+layout(location=0) in vec3 aP;layout(location=1) in vec4 aI;      // type (0 ring, 1 glow), radius px, alpha
+${PROJ}
+uniform float uDpr;
+out float vT,vR,vAl,vSz,vC;
+void main(){vec3 p=proj(aP);vT=aI.x;vR=aI.y;vAl=aI.z;
+  vC=0.;
+  if(uRefl>0.5)vAl*=exp(-0.35*gDepth);
+  float sz=aI.x<0.5?2.*(aI.y+vC+3.):max(aI.y*6.,2.*(aI.y+vC+2.));vSz=sz;gl_PointSize=sz;gl_Position=toClip(p.xy);}`;
+const PT_FS=`#version 300 es
+precision highp float;
+in float vT,vR,vAl,vSz,vC;out vec4 o;
+void main(){vec2 c=(gl_PointCoord-0.5)*vSz;float d=length(c),a;
+  if(vT<0.5)a=clamp(1.-abs(d-vR)/(1.+vC),0.,1.)/(1.+0.5*vC);
+  else{float g=exp(-d*d/(vR*vR*0.9))+0.6*exp(-d*d/(vR*vR*4.));
+    float R=vR+vC,bk=clamp(R+0.5-d,0.,1.)*(1.+0.6*smoothstep(0.55,1.,d/R))*min(1.,2.5*vR*vR/(R*R));
+    a=mix(g,bk,smoothstep(0.8,2.5,vC));}                                   // out of focus, a point of light becomes a bokeh disc
+  o=vec4(vec3(0.82,1.,0.82)*a*vAl,1.);}`;
+/* the finished tips, read straight from the live geometry so they stay on the moving branches */
+const TIP_VS=`#version 300 es
+precision highp float;precision highp int;
+${PROJ}
+uniform highp sampler2D uPos;uniform int uBase,uNkD;uniform float uDpr,uA;
+out float vT,vR,vAl,vSz,vC;
+void main(){int i=(uBase+gl_VertexID*uNkD+uNkD-1)*2+1;
+  vec3 p=proj(texelFetch(uPos,ivec2(i%${TEXW},i/${TEXW}),0).xyz);
+  vT=1.;vR=0.6*uDpr;vC=0.;vAl=uA;if(uRefl>0.5)vAl*=exp(-0.35*gDepth);
+  vSz=max(vR*6.,2.*(vR+2.));gl_PointSize=vSz;gl_Position=toClip(p.xy);}`;
+/* growth buds and division flashes, read from the live geometry so they stay on branches that have begun to bend */
+const GROW_VS=`#version 300 es
+precision highp float;precision highp int;
+${PROJ}
+uniform highp sampler2D uPos;uniform int uK,uNk,uOff0,uDmI,uMode,uQ;uniform float uFr,uRad,uA;
+out float vT,vR,vAl,vSz,vC;
+vec3 tex(int i){return texelFetch(uPos,ivec2(i%${TEXW},i/${TEXW}),0).xyz;}
+void main(){int nd=gl_VertexID,s=uK<=uDmI?nd<<(uDmI-uK):nd;vec3 p;
+  if(uMode==0){int i=(uOff0+s*uNk+uQ)*2;p=mix(tex(i),tex(i+1),uFr);}else p=tex((uOff0+s*uNk+uNk-1)*2+1);
+  vT=uMode==0?1.:0.;vR=uRad;vC=0.;vAl=uA;vec3 q=proj(p);if(uRefl>0.5)vAl*=exp(-0.35*gDepth);
+  vSz=vT<0.5?2.*(vR+3.):max(vR*6.,2.*(vR+2.));gl_PointSize=vSz;gl_Position=toClip(q.xy);}`;
+/* The approach head reaches the water at each meridian tip and fades there. */
+const HEAD_VS=`#version 300 es
+precision highp float;precision highp int;
+${PROJ}
+uniform highp sampler2D uPos;uniform int uDI,uDmI,uRh,uNGI;uniform int uOff[16],uNk[16],uPs[16],uOrd[64];
+uniform float uM,uT,uTrS,uHA,uDpr,uTrk;
+out float vT,vR,vAl,vSz,vC;
+vec3 tex(int i){return texelFetch(uPos,ivec2(i%${TEXW},i/${TEXW}),0).xyz;}
+${COLLAPSE_CURVE}
+vec3 ptAt(int g,int j){                 // point j (0…M) along meridian g
+  if(j<=0)return tex((uOff[0]+g*uNk[0])*2);
+  int jj=j-1,k=0;for(int i=1;i<16;i++){if(i>uDI)break;if(jj>=uPs[i])k=i;}
+  int s=k<=uDmI?g:g<<(k-uDmI);return tex((uOff[k]+s*uNk[k]+jj-uPs[k])*2+1);}
+void main(){
+  int i=gl_VertexID,side=i&1,e=i>>1,mm=e%uNGI,qr=e/uNGI+1,g=uOrd[mm];
+  vec3 p;
+  vT=1.;vR=1.15*uDpr;vC=0.;vSz=max(vR*6.,2.*(vR+2.));gl_PointSize=vSz;
+  float w=uM+uTrS;
+  if(qr!=uRh||side==1||w<0.){gl_Position=vec4(2.,2.,2.,1.);vAl=0.;return;}
+  int j0=int(floor(w));vec3 a=ptAt(g,j0),b=ptAt(g,min(j0+1,int(uM)));
+  vec3 prev=j0>0?ptAt(g,j0-1):2.*a-b,next=j0+2<=int(uM)?ptAt(g,j0+2):2.*b-a;
+  p=flowingCurve(prev,a,b,next,w-float(j0),uT);
+  float em=smoothstep(uTrk,uTrk+8.,w);   // born where the trunk ends
+  vec3 q=proj(p);vAl=uHA*em;if(uRefl>0.5)vAl*=exp(-0.35*gDepth);gl_Position=toClip(q.xy);}`;
+/* a few stars through a break in the cloud: fixed to the sky, pale, faint, seen again in the water */
+const STAR_VS=`#version 300 es
+precision highp float;precision highp int;
+uniform mat3 uR;uniform float uS,uF,uPF,uRefl,uDpr,uTime;uniform vec2 uRes,uCtr;
+out float vT,vR,vAl,vSz,vC;
+uint hsh(uint x){x^=x>>16;x*=0x7feb352du;x^=x>>15;x*=0x846ca68bu;x^=x>>16;return x;}
+float rnd(inout uint s){s=hsh(s);return float(s)*(1./4294967296.);}
+void main(){uint s=uint(gl_VertexID)*2654435761u+12345u;
+  float az=6.2831853*rnd(s),el=0.03+0.55*pow(rnd(s),1.3),b=rnd(s),tw=rnd(s);
+  vec3 d=vec3(cos(el)*cos(az),sin(el),cos(el)*sin(az));if(uRefl>0.5)d.y=-d.y;
+  vec3 q=uR*d*3.5*uPF;vT=1.;vC=0.;                    // on a far dome around the scene
+  if(q.z>-0.3*uPF){gl_Position=vec4(2.,2.,2.,1.);vAl=0.;gl_PointSize=1.;vR=1.;vSz=1.;return;}
+  vec2 P=uCtr+vec2(q.x,-q.y)*uS*uF/max(0.5,uF-q.z/uPF);
+  vR=(0.6+0.55*b*b)*uDpr;vSz=max(vR*6.,6.);gl_PointSize=vSz;
+  vAl=(0.3+1.1*pow(b,3.))*(0.85+0.15*sin(uTime*(0.7+1.3*tw)+tw*40.))*(uRefl>0.5?0.5:1.);
+  gl_Position=vec4(P.x/uRes.x*2.-1.,1.-P.y/uRes.y*2.,0.,1.);}`;
+const STAR_FS=`#version 300 es
+precision highp float;in float vT,vR,vAl,vSz,vC;out vec4 o;
+void main(){vec2 c=(gl_PointCoord-0.5)*vSz;float d=length(c),a=exp(-d*d/(vR*vR*0.8));o=vec4(vec3(0.85,0.92,1.)*a*vAl,1.);}`;
+const FS_VS=`#version 300 es
+out vec2 vU;void main(){vec2 p=vec2(float((gl_VertexID<<1)&2),float(gl_VertexID&2));vU=p;gl_Position=vec4(p*2.-1.,0.,1.);}`;
+const DOWN_FS=`#version 300 es
+precision highp float;in vec2 vU;uniform sampler2D uT;uniform vec2 uH;out vec4 o;
+void main(){vec3 s=texture(uT,vU).rgb*4.;s+=texture(uT,vU-uH).rgb;s+=texture(uT,vU+uH).rgb;
+  s+=texture(uT,vU+vec2(uH.x,-uH.y)).rgb;s+=texture(uT,vU-vec2(uH.x,-uH.y)).rgb;o=vec4(s/8.,1.);}`;
+const UP_FS=`#version 300 es
+precision highp float;in vec2 vU;uniform sampler2D uT;uniform vec2 uH;out vec4 o;
+void main(){vec3 s=texture(uT,vU+vec2(-uH.x*2.,0.)).rgb+texture(uT,vU+vec2(-uH.x,uH.y)).rgb*2.
+  +texture(uT,vU+vec2(0.,uH.y*2.)).rgb+texture(uT,vU+vec2(uH.x,uH.y)).rgb*2.
+  +texture(uT,vU+vec2(uH.x*2.,0.)).rgb+texture(uT,vU+vec2(uH.x,-uH.y)).rgb*2.
+  +texture(uT,vU+vec2(0.,-uH.y*2.)).rgb+texture(uT,vU+vec2(-uH.x,-uH.y)).rgb*2.;o=vec4(s/12.,1.);}`;
+/* volumetric light: the glow is marched toward the throat, as if the structure lit a faint haze in the air */
+const SHAFT_FS=`#version 300 es
+precision highp float;in vec2 vU;uniform sampler2D uT;uniform vec2 uL;out vec4 o;
+void main(){vec2 uv=vU,dv=(vU-uL)*(0.9/48.);float ill=1.;vec3 s=vec3(0.);
+  for(int i=0;i<48;i++){uv-=dv;s+=max(texture(uT,uv).rgb-0.035,0.)*ill;ill*=0.955;}   // only bright light scatters
+  o=vec4(s/48.,1.);}`;
+const COMP_FS=`#version 300 es
+precision highp float;in vec2 vU;uniform sampler2D uS,uB,uSh;uniform float uBS,uEx,uShS,uFilm,uTime;out vec4 o;
+void main(){vec2 q=vU-0.5,ca=q*0.004*uFilm;                                   // faint chromatic fringe toward the edges
+  vec3 s=vec3(texture(uS,vU-ca).r,texture(uS,vU).g,texture(uS,vU+ca).b);
+  vec3 bl=vec3(texture(uB,vU-ca*2.).r,texture(uB,vU).g,texture(uB,vU+ca*2.).b);
+  vec3 c=s+bl*uBS+texture(uSh,vU).rgb*uShS;
+  c=1.-exp(-c*uEx);                                                   // filmic roll-off: hot cores go white, never clip
+  c*=1.-0.35*dot(q,q);
+  float n=fract(sin(dot(gl_FragCoord.xy+fract(uTime*7.31)*vec2(113.1,71.7),vec2(12.9898,78.233)))*43758.5453);
+  c+=(n-0.5)*0.05*uFilm*(0.3+c);                                       // film grain, a little stronger in the light
+  c+=(fract(52.9829189*fract(dot(gl_FragCoord.xy,vec2(0.06711056,0.00583715))))-0.5)/255.;   // dither: no banding in the glow
+  o=vec4(max(c,0.),1.);}`;
+const P_SHAFT=program(FS_VS,SHAFT_FS);
+
+const P_STAR=program(STAR_VS,STAR_FS),NSTAR=90;
+const P_LINE=program(LINE_VS,LINE_FS),P_PT=program(PT_VS,PT_FS),P_TIP=program(TIP_VS,PT_FS),P_HEAD=program(HEAD_VS,PT_FS),P_GROW=program(GROW_VS,PT_FS);
+
+/* =====================================================================
+   The morph, on the GPU. Every segment's heading is one interpolation, with one weight t, between its
+   place in the tree and its place on the torus; a point on the structure is the sum of the segments
+   before it. Pass 1 finds where every strand starts (summing its ancestors); pass 2 walks each strand.
+   ===================================================================== */
+const MORPH_COMMON=`#version 300 es
+precision highp float;precision highp int;
+uniform highp sampler2D uNode;               // per branch and segment: tree heading (polar, azimuth), segment length
+uniform int uD,uDm,uM;uniform int uNk[16],uPs[16],uNOff[16];
+uniform float uUg[64];uniform float uT,uFold,uSegL,uH;
+out vec4 o;
+vec4 nodeAt(int i){return texelFetch(uNode,ivec2(i%${TEXW},i/${TEXW}),0);}
+float wrapA(float x){return x-6.2831853*floor(x/6.2831853+0.5);}
+vec3 segV(int l,int al,int q,int g){          // segment q of strand al at level l, in meridian g
+  int nd=l<=uDm?al>>(uDm-l):al;
+  float U=uUg[g],tgt=3.14159265*(float(uPs[l]+q)+0.5)/float(uM),sl=uSegL;
+  vec4 n=nodeAt(uNOff[l]+nd*uNk[l]+q);
+  float p0=l==0?U:n.y;                        // the trunk opens symmetrically: no lean
+  float a=n.x+(tgt-n.x)*uT,ph=p0+wrapA(U-p0)*uT,len=n.z*pow(sl/n.z,uT);
+  if(l>uDm&&uFold>0.){int sr=(al>>(l-uDm))<<(l-uDm);
+    if(sr!=al){                               // a fine twig gathers onto the strand it belongs to
+      vec4 r=nodeAt(uNOff[l]+sr*uNk[l]+q);
+      float ar=r.x+(tgt-r.x)*uT,pr=r.y+wrapA(U-r.y)*uT,lr=r.z*pow(sl/r.z,uT);
+      a+=(ar-a)*uFold;ph+=wrapA(pr-ph)*uFold;len+=(lr-len)*uFold;}}
+  float sa=sin(a);return len*vec3(sa*cos(ph),cos(a),sa*sin(ph));}
+int texel(){return int(gl_FragCoord.y)*${TEXW}+int(gl_FragCoord.x);}`;
+const STARTS_FS=MORPH_COMMON+`
+uniform int uSOff[16],uNS;
+void main(){int p=texel();if(p>=uNS){o=vec4(0.);return;}
+  int k=0;for(int i=1;i<16;i++){if(i>uD)break;if(p>=uSOff[i])k=i;}
+  int s=p-uSOff[k],g=k<=uDm?s:s>>(k-uDm);float U=uUg[g];
+  vec3 x=vec3(uH*cos(U)*uT,0.,uH*sin(U)*uT);
+  for(int l=0;l<16;l++){if(l>=k)break;
+    int al=k<=uDm?s:(l>=uDm?s>>(k-l):g);
+    for(int q=0;q<128;q++){if(q>=uNk[l])break;x+=segV(l,al,q,g);}}
+  o=vec4(x,1.);}`;
+const SEG_FS=MORPH_COMMON+`
+uniform highp sampler2D uStart;uniform int uOff[16],uSOff[16],uNI;
+void main(){int p=texel(),i=p>>1,e=p&1;if(i>=uNI){o=vec4(0.);return;}
+  int k=0;for(int c=1;c<16;c++){if(c>uD)break;if(i>=uOff[c])k=c;}
+  int loc=i-uOff[k],nk=uNk[k],s=loc/nk,q=loc-s*nk,g=k<=uDm?s:s>>(k-uDm),si=uSOff[k]+s;
+  vec3 x=texelFetch(uStart,ivec2(si%${TEXW},si/${TEXW}),0).xyz;
+  for(int c=0;c<128;c++){if(c>=q+e)break;x+=segV(k,s,c,g);}
+  o=vec4(x,1.);}`;
+const P_START=GPU?program(FS_VS,STARTS_FS):null,P_SEG=GPU?program(FS_VS,SEG_FS):null;
+const P_DOWN=program(FS_VS,DOWN_FS),P_UP=program(FS_VS,UP_FS),P_COMP=program(FS_VS,COMP_FS);
+
+const quadBuf=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,quadBuf);
+gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([0,-1,0,1,1,-1,1,1]),gl.STATIC_DRAW);
+function lineVAO(metaBuf){const v=gl.createVertexArray();gl.bindVertexArray(v);
+  gl.bindBuffer(gl.ARRAY_BUFFER,quadBuf);gl.enableVertexAttribArray(0);gl.vertexAttribPointer(0,2,gl.FLOAT,false,0,0);
+  if(metaBuf){gl.bindBuffer(gl.ARRAY_BUFFER,metaBuf);gl.enableVertexAttribArray(3);gl.vertexAttribPointer(3,4,gl.FLOAT,false,16,0);gl.vertexAttribDivisor(3,1);}
+  gl.bindVertexArray(null);return v;}
+const brMeta=gl.createBuffer(),VAO_BR=lineVAO(brMeta),VAO_RG=lineVAO(null);
+const ptBuf=gl.createBuffer(),VAO_PT=gl.createVertexArray();
+gl.bindVertexArray(VAO_PT);gl.bindBuffer(gl.ARRAY_BUFFER,ptBuf);
+gl.enableVertexAttribArray(0);gl.vertexAttribPointer(0,3,gl.FLOAT,false,28,0);
+gl.enableVertexAttribArray(1);gl.vertexAttribPointer(1,4,gl.FLOAT,false,28,12);gl.bindVertexArray(null);
+const VAO_EMPTY=gl.createVertexArray();
+
+/* =====================================================================
+   The flow: sixty-five thousand points of light that travel along the structure itself, each one
+   carried from frame to frame on the GPU. A particle lives on one root-to-tip path and on a loop
+   coordinate x: 0…M runs up through the throat and out along the upper half to its tip, M…2M runs
+   back from the lower half's tip to the seed. Its position is read from the live geometry, so it
+   moves with the structure through every moment of the morph.
+   While the tree grows, the seed is a source: light streams out along both halves to the tips and
+   ends there, returning to the seed to be released again a little later.
+   When the tips of the two halves meet, the flow at the top can only carry on into the bottom. The
+   lower half's direction reverses as a front that starts where the halves meet and travels back to
+   the seed: ahead of it the light still streams out, behind it the light is coming home, and where
+   they meet it gathers into a bright band. The source keeps giving until the front arrives, then
+   runs dry. When the band reaches the seed it rises up through the throat as the first full circuit,
+   and from then on the light circulates — up through the throat, over the top, down the outside
+   and back in — forever.
+   ===================================================================== */
+const posTex=gl.createTexture();let posFB=null,texH=1;
+function floatTex(w,h,data){const t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA32F,w,h,0,gl.RGBA,gl.FLOAT,data||null);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);return t;}
+function fboFor(t){const f=gl.createFramebuffer();gl.bindFramebuffer(gl.FRAMEBUFFER,f);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,t,0);return f;}
+const HASH=`uint hsh(uint x){x^=x>>16;x*=0x7feb352du;x^=x>>15;x*=0x846ca68bu;x^=x>>16;return x;}
+float rnd(inout uint s){s=hsh(s);return float(s)*(1./4294967296.);}`;
+const FLOW_UPD=`#version 300 es
+precision highp float;precision highp int;
+uniform highp sampler2D uS;
+uniform float uDt,uC,uM,uG,uSf,uJ,uTf,uW;uniform int uNL,uFrame;
+out vec4 o;
+${HASH}
+void main(){
+  ivec2 ij=ivec2(gl_FragCoord.xy);int id=ij.y*${FW}+ij.x;
+  vec4 st=texelFetch(uS,ij,0);                   // x: loop coordinate (<0 waiting at the seed), y: wait, z: path, w: age
+  uint h=hsh(uint(id)*747796405u+2891336453u);float sp=0.7+0.6*float(h)*(1./4294967296.);
+  uint r=hsh(uint(id)^hsh(uint(uFrame)*2246822519u+3266489917u));
+  float M=uM,x=st.x;
+  if(x<0.){st.y-=uDt;                            // released from the seed, into one half or the other
+    if(st.y<=0.)st=vec4(0.01,0.,floor(rnd(r)*float(uNL)),0.);
+    o=st;return;}
+  bool up=x<M;
+  float v=up?1.:(uJ>0.5?tanh((uSf-x)/uW):-1.);   // the lower half: outward ahead of the front, homeward behind it
+  float nx=x+v*uC*sp*uDt;bool die=false;
+  float gat=(!up&&uJ>0.5&&abs(nx-uSf)<2.5*uW)?1.:st.y*exp(-uDt/4.);   // light that has gathered on the front
+  if(up){if(uG<M-1e-3){if(nx>=uG)die=true;}else if(nx>=M&&uJ<0.5)die=true;}
+  else{if(uJ<0.5)die=true;
+    if(nx>=2.*M)nx-=2.*M;}                         // home through the seed, and up the throat again
+  if(die){o=vec4(-1.,rnd(r)*uTf,st.z,0.);return;}
+  o=vec4(nx,gat,st.z,st.w+uDt);}`;
+const FLOW_VS=`#version 300 es
+precision highp float;precision highp int;
+${PROJ}
+uniform highp sampler2D uPos,uSt;
+uniform int uD,uDm,uM;uniform int uOff[16],uNk[16],uPs[16],uNext[64];
+uniform float uG,uT,uCam,uDpr,uGap,uBand,uKF,uKL;
+out float vA;
+${HASH}
+${COLLAPSE_CURVE}
+vec3 tex(int i){return texelFetch(uPos,ivec2(i%${TEXW},i/${TEXW}),0).xyz;}
+vec4 pathPt(int L,float j){              // point at index j along root-to-tip path L, and its generation
+  j=clamp(j,0.,float(uM)-1e-3);int ji=int(j);float f=j-float(ji);
+  int k=0;for(int i=1;i<16;i++){if(i>uD)break;if(ji>=uPs[i])k=i;}
+  int q=ji-uPs[k],st=k<=uDm?(L>>(uD-uDm)):(L>>(uD-k)),t0=(uOff[k]+st*uNk[k]+q)*2;
+  vec3 a=tex(t0),b=tex(t0+1),prev=a-(b-a),next=b+(b-a);
+  if(q>0)prev=tex(t0-2);
+  else if(k>0){int pk=k-1,ps=pk<=uDm?(L>>(uD-uDm)):(L>>(uD-pk));prev=tex((uOff[pk]+ps*uNk[pk]+uNk[pk]-1)*2);}
+  if(q<uNk[k]-1)next=tex(t0+3);
+  else if(k<uD){int ck=k+1,cs=ck<=uDm?(L>>(uD-uDm)):(L>>(uD-ck));next=tex((uOff[ck]+cs*uNk[ck])*2+1);}
+  return vec4(flowingCurve(prev,a,b,next,f,uT),float(k)+(float(q)+f)/float(uNk[k]));}
+void main(){
+  int id=gl_VertexID;vec4 st=texelFetch(uSt,ivec2(id%${FW},id/${FW}),0);
+  gl_PointSize=1.;
+  if(st.x<0.){gl_Position=vec4(2.,2.,2.,1.);vA=0.;return;}
+  uint s=uint(id)*2654435761u+97u;
+  float fr=rnd(s),br=rnd(s);
+  vec3 jit=normalize(vec3(rnd(s)-0.5,rnd(s)-0.5,rnd(s)-0.5)+1e-4)*sqrt(rnd(s));
+  float Mf=float(uM),x=st.x;bool up=x<Mf;float j=up?x:2.*Mf-x;
+  int NL=1<<uD,L=min(int(st.z),NL-1);
+  if(!up&&uRefl>0.5){gl_Position=vec4(2.,2.,2.,1.);vA=0.;return;}   // the return runs on the surface itself: not mirrored
+  int GS=1<<(uD-uDm),g=L>>(uD-uDm),L2=uNext[g]*GS+(L&(GS-1));
+  float softness=collapseSoftness(uT);
+  // During the fall the luminous grain hugs the curves; it spreads into the surface as they settle.
+  float spr=fr*smoothstep(0.25,1.,uT)*mix(1.,0.12,softness);
+  vec4 P;vec3 p;
+  if(up){P=pathPt(L,j);p=mix(P.xyz,pathPt(L2,j).xyz,spr);p+=jit*uCam*0.005;}
+  else{                                    // home along the water, from where the ends meet it to the foot of the throat
+    float u=(x-Mf)/Mf;P=vec4(0.);
+    p=mix(mix(pathPt(L,Mf).xyz,pathPt(L2,Mf).xyz,spr),mix(pathPt(L,0.).xyz,pathPt(L2,0.).xyz,spr),u);
+    p.xz+=jit.xz*uCam*0.005;p.y=abs(jit.y)*uCam*0.0015;}
+  // the tree's flow is conserved (dense and dim in the trunk, sparse and bright at the tips);
+  // the ring's circulation is even all the way round
+  float a=mix(uKF*pow(1.38,P.w),uKL,smoothstep(0.,0.7,uT))*(0.55+0.9*br);
+  a*=smoothstep(0.,0.35,st.w);                                   // a newly released particle fades in at the seed
+  float Gc=max(min(uG,Mf),1e-3);if(up)a*=1.-smoothstep(0.8*Gc,Gc,j)*uGap;   // and fades out where the flow ends
+  a*=mix(1.,uBand,st.y);                 // the gathered light stays luminous, not blinding, until it disperses
+  vec3 q=proj(p);if(uRefl>0.5)a*=exp(-0.35*gDepth);
+  vA=a;gl_PointSize=(1.5+1.1*br)*uDpr;gl_Position=toClip(q.xy);}`;
+const FLOW_FS=`#version 300 es
+precision highp float;in float vA;out vec4 o;
+void main(){vec2 c=gl_PointCoord-0.5;float a=clamp(1.-length(c)*2.,0.,1.);o=vec4(vec3(0.62,1.,0.78)*a*vA,1.);}`;
+const P_FLOW=GPU?program(FLOW_VS,FLOW_FS):null,P_FUPD=GPU?program(FS_VS,FLOW_UPD):null;
+const NP=FW*FW,FRONT_W=10;   // a wide front: the returning light gathers softly, never into a hard ring
+let flowOff=new Int32Array(16),flowNk=new Int32Array(16),flowPs=new Int32Array(16),flowNext=new Int32Array(64);
+let flowT=[],flowF=[],flowCur=0,flowFrame=0,frontS=M,tipGap=1,flowN=0;
+if(GPU){for(let i=0;i<2;i++){flowT.push(floatTex(FW,FW,null));flowF.push(fboFor(flowT[i]));}}
+else{const r=$('flow').closest('.row'),r2=$('speed').closest('.row');r.style.display=r2.style.display='none';}
+function resetFlow(){         // every particle waits at the seed, to be released over the first moments
+  frontS=M;if(!GPU)return;const d=new Float32Array(NP*4);
+  for(let i=0;i<NP;i++){d[i*4]=-1;d[i*4+1]=Math.random()*5;}
+  gl.bindTexture(gl.TEXTURE_2D,flowT[flowCur]);gl.texSubImage2D(gl.TEXTURE_2D,0,0,0,FW,FW,gl.RGBA,gl.FLOAT,d);}
+const flowC=()=>M/4*(+$('speed').value);            // loop units per second: a path in four seconds
+const frontV=()=>0.6*flowC();                       // the front is slower than the light, so the light can gather on it
+function frontStep(dt){       // the halves join once their tips meet; the front then travels home to the seed
+  const open=G>=M-1e-6&&tipGap<0.05*RT;
+  if(open){if(meetT>=0.5)frontS=Math.min(M*2.35,frontS+frontV()*dt);}   // the return sets off once the rings are drawn
+  else frontS=Math.max(M,frontS-3*frontV()*dt);
+  return open;}
+let junction=false,meetT=-999;     // seconds since the two halves' ends met (negative: still to come)
+function meetStep(dt){
+  if($('auto').checked)meetT=globalT()-T_TOUCH;                         // on the timeline, the ends touch the water as the bloom ends
+  else meetT=G>=M&&tipGap<0.004*RT?(meetT<0?0:meetT+dt):-999;        // by hand, whenever they close
+}
+function flowStep(dt){
+  if(!GPU)return;
+  const U_=P_FUPD.u,dst=1-flowCur;gl.disable(gl.BLEND);gl.useProgram(P_FUPD.p);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,flowF[dst]);gl.viewport(0,0,FW,FW);
+  gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,flowT[flowCur]);gl.uniform1i(U_.uS,0);
+  gl.uniform1f(U_.uDt,dt);gl.uniform1f(U_.uC,flowC()*(G<M?Math.max(G,0.02)/M:1));gl.uniform1f(U_.uM,M);gl.uniform1f(U_.uG,G);
+  gl.uniform1f(U_.uSf,frontS);gl.uniform1f(U_.uJ,junction?1:0);
+  gl.uniform1f(U_.uTf,M/frontV());gl.uniform1f(U_.uW,FRONT_W);gl.uniform1i(U_.uNL,1<<D);gl.uniform1i(U_.uFrame,flowFrame++);
+  gl.bindVertexArray(VAO_EMPTY);gl.drawArrays(gl.TRIANGLES,0,3);flowCur=dst;
+}
+function drawFlow(refl){
+  if(!GPU||!$('flow').checked)return;
+  gl.useProgram(P_FLOW.p);setProj(P_FLOW,1,refl);const U_=P_FLOW.u;
+  gl.uniform1i(U_.uD,D);gl.uniform1i(U_.uDm,Dm);gl.uniform1i(U_.uM,M);
+  gl.uniform1iv(U_['uOff[0]'],flowOff);gl.uniform1iv(U_['uNk[0]'],flowNk);gl.uniform1iv(U_['uPs[0]'],flowPs);gl.uniform1iv(U_['uNext[0]'],flowNext);
+  gl.uniform1f(U_.uG,G);gl.uniform1f(U_.uT,t);gl.uniform1f(U_.uCam,camFit);gl.uniform1f(U_.uDpr,dpr);
+  gl.uniform1f(U_.uGap,G<M?1:sm((tipGap/RT-0.03)/0.25));
+  gl.uniform1f(U_.uBand,0.07);
+  gl.uniform1f(U_.uKF,0.0132);gl.uniform1f(U_.uKL,0.1);
+  gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,posTex);gl.uniform1i(U_.uPos,0);
+  gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,flowT[flowCur]);gl.uniform1i(U_.uSt,1);
+  gl.bindVertexArray(VAO_EMPTY);gl.drawArrays(gl.POINTS,0,NP);gl.activeTexture(gl.TEXTURE0);
+}
+
+/* =====================================================================
+   Water under a light rain.
+   For every pixel the view ray is traced to the water plane and the true surface is evaluated there:
+   a barely moving swell, and the rings of a light rain. The surface is divided into cells; in each,
+   a drop falls now and then, at its own unhurried, irregular interval and at a fresh random spot each
+   time, and sends out a small ring that spreads, widens and dies away within a second or two. Each
+   point of water feels the drops of its own cell and its neighbours'. The rain is computed at two
+   scales a factor of two apart and blended, so it never drifts while the camera zooms and the rings
+   keep a constant size in the frame. When the returning light sweeps home across the water it
+   stirs the surface where it passes. The mirrored scene is sampled through that surface, so every
+   ring bends the reflection exactly as real water does; reflectance follows Fresnel's law for water
+   (mirror-like at grazing angles, darker from above); and the moving slopes catch glints of the
+   light from the throat.
+   ===================================================================== */
+const WATER_TREATMENT={rainContrast:0.78};
+const WATER_FS=`#version 300 es
+precision highp float;in vec2 vU;
+uniform sampler2D uT;
+uniform mat3 uR;uniform float uS,uF,uPF,uFloor,uTime,uGain,uCam,uK,uRL,uRA,uBandR,uBandA,uRainA,uRainP,uRainContrast,uTouchT,uTouchR,uBoatL,uOarT,uBoatV,uStroke;uniform vec4 uBoat;uniform vec2 uRes,uCtr;
+out vec4 o;
+float hs(vec2 p){p=fract(p*vec2(123.34,456.21));p+=dot(p,p+45.32);return fract(p.x*p.y);}
+vec2 rainLayer(vec2 p,float cs){       // the rings of the drops in p's cell and its neighbours, for cells of size cs
+  p+=vec2(37.1,-11.7)*cs;             // each scale has its own pattern, the same whenever that scale is in use
+  vec2 g=vec2(0.),ci=floor(p/cs);float lam=0.09*cs,v=0.15*cs,k=6.2831853/lam;
+  for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++){
+    vec2 c=ci+vec2(float(x),float(y));
+    float per=4.5+5.5*hs(c+0.37),tt=uTime/per+hs(c+7.13),cyc=floor(tt),tau=fract(tt)*per;   // an unhurried, irregular rhythm
+    vec2 cc=c+vec2(cyc*0.61,cyc*1.73);
+    if(hs(cc+3.7)>uRainP)continue;                     // not every interval brings a drop
+    vec2 q=p-(c+vec2(hs(cc),hs(cc+11.9)))*cs;float r=length(q);if(r<1e-6)continue;
+    float R=v*tau,w=lam*(0.55+0.45*tau),d=r-R;if(abs(d)>3.*w)continue;
+    float e=exp(-d*d/(w*w)),amp=exp(-tau/1.2)*(1.-smoothstep(0.75*cs,cs,R+3.*w))/(1.+R/(1.5*lam));
+    g+=amp*e*(cos(k*d)-2.*d/(w*w*k)*sin(k*d))*(q/r);}
+  return g;}
+float wakeH(vec2 p){           // the dinghy's wake (Kelvin's V: diverging waves along its arms, transverse waves between)
+  vec2 B=uBoat.xy,h=uBoat.zw,n=vec2(-h.y,h.x),d=p-B;float L=uBoatL,a=-dot(d,h),al=abs(dot(d,n)),H=0.;
+  if(a>-0.3*L&&a<22.*L){float ap=max(a,0.),c=0.354*ap,w=0.1*L+0.05*ap,fade=exp(-ap/(8.*L))*smoothstep(-0.3*L,0.4*L,a);
+    H+=0.007*L*fade*exp(-pow((al-c)/w,2.))*cos(6.2831853/(0.3*L)*(ap*0.82+al*0.57));
+    H+=0.004*L*fade*smoothstep(c+w,c-0.5*w,al)*cos(6.2831853/(0.55*L)*ap)*smoothstep(0.,1.2*L,ap);}
+  for(int k=0;k<4;k++){float age=uOarT+float(k)*uStroke;      // and the puddles each stroke leaves where the blades came out
+    for(int sd=-1;sd<=1;sd+=2){vec2 O=B-h*uBoatV*age+h*(-0.12-0.644*sin(0.55))*L+n*float(sd)*(0.2+0.644*cos(0.55))*L;float r=length(p-O);
+      H+=exp(-age/4.)*(0.005*L*exp(-pow((r-0.05*L-0.05*L*age)/(0.05*L),2.))*cos(6.2831853*r/(0.1*L))-0.006*L*exp(-pow(r/(0.07*L),2.)));}}
+  // During the drive, a small moving depression follows the actual immersed blade.
+  float phase=fract(uTime/uStroke);
+  if(phase<0.38){float psi=-0.6+1.15*smoothstep(0.,1.,phase/0.38);
+    float wet=smoothstep(0.,0.035,phase)*(1.-smoothstep(0.34,0.38,phase));
+    for(int sd=-1;sd<=1;sd+=2){vec2 O=B+h*(-0.12-0.644*sin(psi))*L+n*float(sd)*(0.2+0.644*cos(psi))*L;
+      vec2 q=(p-O)/L;float r=length(q);
+      H+=wet*L*(0.0018*exp(-pow((r-0.045)/0.025,2.))-0.0025*exp(-dot(q,q)/0.0016));}}
+  return H;}
+vec2 wakeGrad(vec2 p){float L=uBoatL;if(length(p-uBoat.xy)>26.*L)return vec2(0.);float e=0.02*L;
+  return vec2(wakeH(p+vec2(e,0.))-wakeH(p-vec2(e,0.)),wakeH(p+vec2(0.,e))-wakeH(p-vec2(0.,e)))/(2.*e);}
+vec2 grad(vec2 p,out vec2 rain){         // analytic slope of the water surface at p
+  float c=uCam,A=c*0.0009;
+  vec2 g=A*vec2(cos(p.x/c*2.1+uTime*0.35)*2.1/c+0.5*cos((p.x+p.y)/c*5.3+uTime*0.5)*5.3/c,
+                cos(p.y/c*2.9-uTime*0.27)*2.9/c+0.5*cos((p.x+p.y)/c*5.3+uTime*0.5)*5.3/c);   // a barely moving swell
+  float L=log2(0.26*c),a=exp2(floor(L)),f=L-floor(L);    // light rain, at two scales blended so it keeps its size on screen
+  rain=uRainA*mix(rainLayer(p,a),rainLayer(p,2.*a),f)/(1.+dot(p,p)/(6.*c*c));   // thinning toward the horizon
+  g+=rain;
+  g+=wakeGrad(p);                     // the dinghy's wake and the puddles of its oars
+  float r=length(p);if(r<1e-6)return g;
+  if(uTouchT>=0.&&uTouchT<6.){          // the instant the branch ends touch the water, a ring wave rises from the whole circle of
+    float tv=0.22*c,lt=0.07*c,kt=6.2831853/lt,wt=lt*(0.7+0.7*uTouchT),at=0.9*exp(-uTouchT/1.6);   // contact and runs out and in
+    float d1=(r-uTouchR)-tv*uTouchT,d2=(uTouchR-r)-tv*uTouchT;
+    if(abs(d1)<3.*wt){float e=exp(-d1*d1/(wt*wt));g+=(p/r)*at*e*(cos(kt*d1)-2.*d1/(wt*wt*kt)*sin(kt*d1));}
+    if(d2>-3.*wt&&abs(d2)<3.*wt&&uTouchR-tv*uTouchT>-wt){float e=exp(-d2*d2/(wt*wt));g-=(p/r)*at*smoothstep(0.,0.10,uTouchT)*e*(cos(kt*d2)-2.*d2/(wt*wt*kt)*sin(kt*d2));}}
+  if(uBandA>0.){float d=r-uBandR,wb=1.1*uRL,kb=6.2831853/(0.55*uRL);   // the returning light stirs the water as it sweeps home
+    if(abs(d)<4.*wb){float e=exp(-d*d/(wb*wb)),ph2=kb*d+uTime*8.;g+=(p/r)*uRA*1.3*uBandA*e*(cos(ph2)-2.*d/(wb*wb*kb)*sin(ph2));}}
+  return g;}
+vec3 waterLight(vec2 frag,vec3 H,vec3 E,vec2 gr){
+  vec3 n=normalize(vec3(-gr.x,1.,-gr.y));
+  vec3 q=uR*vec3(n.x,0.,n.z);
+  vec2 uv=(frag+vec2(q.x,-q.y)*uK)/uRes;uv.y=1.-uv.y;                  // the reflection seen through the moving surface
+  vec3 refl=texture(uT,clamp(uv,0.,1.)).rgb;
+  vec3 v=normalize(E-H);float cosT=clamp(dot(v,n),0.,1.);
+  float F=0.02+0.98*pow(1.-cosT,5.);                                   // Fresnel reflectance of water
+  float fade=exp(-length(H.xz)/(9.*uCam));
+  vec3 c=refl*min(1.,F*6.)*uGain*fade;
+  vec3 ld=normalize(-H),rv=reflect(-v,n);                              // glints of the throat's light on the moving slopes
+  float slope=length(gr);
+  float al=max(dot(rv,ld),0.);   // the light is large (the whole glowing torus): sharp sparkle plus a broad sheen, only on moving water
+  c+=vec3(0.5,1.,0.65)*(pow(al,90.)*0.9+pow(al,12.)*0.35)*min(1.,slope*6.)*uGain*fade;
+  c+=vec3(0.3,1.,0.6)*0.01*uGain*exp(-dot(H.xz,H.xz)/(uCam*uCam*1.2));  // faint light on the surface beneath the structure
+  return c;}
+void main(){
+  vec2 frag=vec2(gl_FragCoord.x,uRes.y-gl_FragCoord.y);
+  vec2 sp=vec2(frag.x-uCtr.x,-(frag.y-uCtr.y));
+  mat3 Rt=transpose(uR);
+  vec3 Ec=vec3(0.,0.,uF*uPF),E=Rt*Ec,dir=Rt*(vec3(sp/uS,0.)-Ec);
+  if(dir.y>=-1e-6){o=vec4(0.,0.,0.,1.);return;}
+  float lam=(uFloor-E.y)/dir.y;if(lam<=0.){o=vec4(0.,0.,0.,1.);return;}
+  vec3 H=E+dir*lam;vec2 rain;
+  vec2 gr=grad(H.xz,rain);
+  vec3 full=waterLight(frag,H,E,gr),base=waterLight(frag,H,E,gr-rain);
+  // Keep every drop's motion; soften only the light and distortion the rain adds.
+  o=vec4(mix(base,full,uRainContrast),1.);}`;
+const P_WATER=program(FS_VS,WATER_FS);
+function drawWater(){
+  gl.useProgram(P_WATER.p);const U_=P_WATER.u;
+  gl.uniformMatrix3fv(U_.uR,false,[Rm[0],Rm[3],Rm[6],Rm[1],Rm[4],Rm[7],Rm[2],Rm[5],Rm[8]]);
+  gl.uniform1f(U_.uS,Scam);gl.uniform1f(U_.uF,camF);gl.uniform1f(U_.uPF,sceneFit);gl.uniform1f(U_.uFloor,floorY);
+  gl.uniform1f(U_.uTime,clock);gl.uniform1f(U_.uGain,+$('refl').value*1.4);gl.uniform1f(U_.uCam,camFit);
+  gl.uniform1f(U_.uK,0.35*Scam*camFit);
+  gl.uniform4f(U_.uBoat,boat.pos[0],boat.pos[1],boat.h[0],boat.h[1]);gl.uniform1f(U_.uBoatL,boat.L);
+  gl.uniform1f(U_.uOarT,boat.oarT);gl.uniform1f(U_.uBoatV,boat.v);gl.uniform1f(U_.uStroke,STROKE);
+  gl.uniform1f(U_.uTouchT,meetT>=0?meetT:-1);gl.uniform1f(U_.uTouchR,((+$('hole').value)+2)*RT);
+  gl.uniform1f(U_.uRL,0.13*camFit);gl.uniform1f(U_.uRA,0.55);gl.uniform1f(U_.uRainA,1.9);gl.uniform1f(U_.uRainP,0.3);
+  gl.uniform1f(U_.uRainContrast,WATER_TREATMENT.rainContrast);
+  const hf=+$('hole').value,uB=clamp01((frontS-M)/M);       // where the returning band is on the water
+  gl.uniform1f(U_.uBandR,lerp((hf+2)*RT,hf*RT,uB));gl.uniform1f(U_.uBandA,junction?sm((frontS-M)/4)*(1-sm((frontS-2*M+4)/6)):0);
+  gl.uniform2f(U_.uRes,CW,CH);gl.uniform2f(U_.uCtr,CW*ctrX,CH*ctrY);
+  gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,reflT.t);gl.uniform1i(U_.uT,0);
+  gl.bindVertexArray(VAO_EMPTY);gl.drawArrays(gl.TRIANGLES,0,3);
+}
+
+/* render targets: an HDR scene buffer and a chain of ever-smaller buffers for the bloom */
+let scene=null,shaft=null,reflT=null,chain=[];
+function target(w,h){const t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);
+  gl.texImage2D(gl.TEXTURE_2D,0,HALF?gl.RGBA16F:gl.RGBA8,w,h,0,gl.RGBA,HALF?gl.HALF_FLOAT:gl.UNSIGNED_BYTE,null);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  const f=gl.createFramebuffer();gl.bindFramebuffer(gl.FRAMEBUFFER,f);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,t,0);
+  return {t,f,w,h};}
+function freeT(x){if(x){gl.deleteTexture(x.t);gl.deleteFramebuffer(x.f);}}
+function setSize(w,h){
+  CW=cv.width=w;CH=cv.height=h;
+  freeT(scene);freeT(shaft);freeT(reflT);chain.forEach(freeT);
+  scene=target(CW,CH);reflT=target(CW,CH);chain=[];
+  let cw=CW,ch=CH;for(let i=0;i<6;i++){cw=Math.max(1,cw>>1);ch=Math.max(1,ch>>1);chain.push(target(cw,ch));}
+  shaft=target(chain[0].w,chain[0].h);
+}
+function resize(){dpr=Math.min(devicePixelRatio||1,1.5);setSize(Math.round(innerWidth*dpr),Math.round(innerHeight*dpr));}
+addEventListener('resize',resize);resize();
+
+/* =====================================================================
+   Twin fractal arbor → torus geometry
+   A classic symmetric fractal tree: a trunk, then 2-way forks at one constant angle, each generation
+   shorter by a fixed ratio, the outer limbs leaning further out each generation so the canopy closes
+   into a dome. Forks alternate between opening outward and opening around the axis, so the dome
+   wraps all the way round. Two mirror-image trees share one trunk through the torus centre.
+   Every root-to-tip path is M segments long. The torus has 2^Dm meridians; each generation-Dm subtree
+   folds onto one meridian (upper half: throat → over the top → outer rim; its mirror is the lower half).
+   A "strand" is one distinct line: below generation Dm one per meridian, above it one per branch.
+   ===================================================================== */
+let seed=7,D,Dm,NG,nSeg,pStart,lev,nodeA,nodeP,nodeL,Ug,ordG,P,Sk,fitTree=1,RT=1;
+const ordI=new Int32Array(64),sOff=new Int32Array(16),nOff=new Int32Array(16);
+let treeRevision=0;
+let nInst=0,posData,metaData,modelMaxY=1,ymaxAll0=1,ymaxRep0=1,HA=[],HP=[],HL=[],lastD=-1;   // HA/HP/HL: each segment's heading and length
+let nodeTex=null,startTex=null,startFB=null,startH=1,nStr=0;
+const FORK=0.15;
+const hv=(a,p)=>[Math.sin(a)*Math.cos(p),Math.cos(a),Math.sin(a)*Math.sin(p)];
+const nrm=v=>{const l=Math.hypot(v[0],v[1],v[2])||1;return [v[0]/l,v[1]/l,v[2]/l];};
+const crs=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+function rotV(v,k,a){const c=Math.cos(a),s=Math.sin(a),d=k[0]*v[0]+k[1]*v[1]+k[2]*v[2];
+  return [v[0]*c+(k[1]*v[2]-k[2]*v[1])*s+k[0]*d*(1-c),v[1]*c+(k[2]*v[0]-k[0]*v[2])*s+k[1]*d*(1-c),v[2]*c+(k[0]*v[1]-k[1]*v[0])*s+k[2]*d*(1-c)];}
+function buildTree(){
+  treeRevision++;
+  D=+$('depth').value;Dm=Math.min(D,+$('mer').value);NG=1<<Dm;
+  const spread=+$('spread').value,ratio=+$('ratio').value,twist=+$('twist').value,vari=+$('vari').value;
+  const rnd=rng(seed*7919+D*31),J=()=>(rnd()-0.5)*2*vari,th0=0.46*spread,lean=0.05*spread;
+  const lens=[0.7];for(let k=1;k<=D;k++)lens.push(0.8*Math.pow(ratio,k-1));
+  const tot=lens.reduce((a,b)=>a+b,0);
+  nSeg=lens.map(l=>Math.max(1,Math.round(M*l/tot)));nSeg[0]+=M-nSeg.reduce((a,b)=>a+b,0);
+  pStart=[];lev=new Uint8Array(M);let acc=0;
+  for(let k=0;k<=D;k++){pStart.push(acc);for(let q=0;q<nSeg[k];q++)lev[acc+q]=k;acc+=nSeg[k];}
+  // fork headings: odd generations open outward, even generations open around the axis
+  const ph0=0.3*J(),nodes=[[{h:[0,1,0],ph:ph0,lenS:1}]];
+  for(let k=1;k<=D;k++){const arr=[],outward=k%2===1;
+    for(let i=0;i<(1<<(k-1));i++){
+      const Pn=nodes[k-1][i],eph=[-Math.sin(Pn.ph),0,Math.cos(Pn.ph)],axis=outward?eph:nrm(crs(Pn.h,eph));
+      for(let c=0;c<2;c++){const th=th0*(1+0.5*J());
+        let h=k===1?hv(th,ph0+(c?Math.PI:0)+0.3*J()):nrm(rotV(Pn.h,axis,(c?1:-1)*th));
+        let a=Math.acos(Math.max(-1,Math.min(1,h[1]))),ph=Math.sin(a)>1e-3?Math.atan2(h[2],h[0]):Pn.ph;
+        if(k>1){h=nrm(rotV(h,[-Math.sin(ph),0,Math.cos(ph)],-lean*clamp01(a/0.9)));   // outer limbs lean further out
+          a=Math.acos(Math.max(-1,Math.min(1,h[1])));if(Math.sin(a)>1e-3)ph=Math.atan2(h[2],h[0]);}
+        arr.push({h,ph,lenS:1+0.4*J()});}}
+    nodes.push(arr);}
+  // per-branch segment headings (eased through each fork) and segment lengths
+  nodeA=[];nodeP=[];nodeL=[];
+  for(let k=0;k<=D;k++){const cnt=1<<k,nk=nSeg[k],A=new Float32Array(cnt*nk),Ph=new Float32Array(cnt*nk),Ln=new Float32Array(cnt);
+    for(let nd=0;nd<cnt;nd++){
+      if(k===0){for(let q=0;q<nk;q++){A[q]=0;Ph[q]=twist*Math.pow(q/M,1.3);}Ln[0]=lens[0]/nk;continue;}
+      const nn=nodes[k][nd],pa=nodes[k-1][nd>>1];Ln[nd]=lens[k]*nn.lenS/nk;
+      for(let q=0;q<nk;q++){const e=sm((q+0.5)/nk/FORK);
+        const hh=nrm([lerp(pa.h[0],nn.h[0],e),lerp(pa.h[1],nn.h[1],e),lerp(pa.h[2],nn.h[2],e)]);
+        const a=Math.acos(Math.max(-1,Math.min(1,hh[1])));
+        A[nd*nk+q]=a;Ph[nd*nk+q]=(Math.sin(a)>1e-3?Math.atan2(hh[2],hh[0]):nn.ph)+twist*Math.pow((pStart[k]+q)/M,1.3);}}
+    nodeA.push(A);nodeP.push(Ph);nodeL.push(Ln);}
+  // meridians: each generation-Dm subtree is placed by the mean direction of its tips
+  const nD=nSeg[D],GS=1<<(D-Dm),gAz=[];
+  for(let g=0;g<NG;g++){let sx=0,sy=0;
+    for(let i=g*GS;i<(g+1)*GS;i++){const p=nodeP[D][i*nD+nD-1],w=Math.sin(nodeA[D][i*nD+nD-1])+0.05;sx+=Math.cos(p)*w;sy+=Math.sin(p)*w;}
+    gAz.push(Math.atan2(sy,sx));}
+  ordG=[...Array(NG).keys()].sort((a,b)=>pos2pi(gAz[a])-pos2pi(gAz[b]));
+  let ox=0,oy=0;ordG.forEach((g,m)=>{const d=gAz[g]-(m+0.5)/NG*TAU;ox+=Math.cos(d);oy+=Math.sin(d);});
+  const off=Math.atan2(oy,ox);Ug=new Float32Array(NG);ordG.forEach((g,m)=>{Ug[g]=(m+0.5)/NG*TAU+off;ordI[m]=g;});
+  // strands, their point storage, and the static per-segment data for the GPU
+  P=[];Sk=[];HA=[];HP=[];HL=[];nInst=0;
+  for(let k=0;k<=D;k++){const S=1<<Math.max(k,Dm);Sk.push(S);P.push(new Float32Array(S*(nSeg[k]+1)*3));nInst+=S*nSeg[k];
+    HA.push(new Float32Array(S*nSeg[k]));HP.push(new Float32Array(S*nSeg[k]));HL.push(new Float32Array(S*nSeg[k]));}
+  texH=Math.max(1,Math.ceil(nInst*2/TEXW));posData=GPU?null:new Float32Array(TEXW*texH*4);metaData=new Float32Array(nInst*4);
+  gl.bindTexture(gl.TEXTURE_2D,posTex);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA32F,TEXW,texH,0,gl.RGBA,gl.FLOAT,null);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+  if(GPU){if(posFB)gl.deleteFramebuffer(posFB);posFB=fboFor(posTex);}
+  // level tables: where each generation's segments, strands and branch data begin
+  {let off=0,so=0,no=0;
+    for(let k=0;k<16;k++){flowOff[k]=off;sOff[k]=so;nOff[k]=no;flowNk[k]=k<=D?nSeg[k]:1;flowPs[k]=k<=D?pStart[k]:M+1;
+      if(k<=D){off+=Sk[k]*nSeg[k];so+=Sk[k];no+=(1<<k)*nSeg[k];}}
+    nStr=so;
+    if(GPU){const nH=Math.max(1,Math.ceil(no/TEXW)),nd=new Float32Array(TEXW*nH*4);
+      for(let k=0;k<=D;k++){const nk=nSeg[k],A=nodeA[k],Ph=nodeP[k],Ln=nodeL[k];
+        for(let n=0;n<(1<<k);n++)for(let q=0;q<nk;q++){const o=(nOff[k]+n*nk+q)*4;nd[o]=A[n*nk+q];nd[o+1]=Ph[n*nk+q];nd[o+2]=Ln[n];}}
+      if(nodeTex)gl.deleteTexture(nodeTex);nodeTex=floatTex(TEXW,nH,nd);
+      if(startTex){gl.deleteTexture(startTex);gl.deleteFramebuffer(startFB);}
+      startH=Math.max(1,Math.ceil(nStr/TEXW));startTex=floatTex(TEXW,startH,null);startFB=fboFor(startTex);}}
+  ordG.forEach((g,m)=>flowNext[g]=ordG[(m+1)%NG]);
+  let o=0;
+  for(let k=0;k<=D;k++){const nk=nSeg[k],S=Sk[k];
+    for(let s=0;s<S;s++){
+      // kind: 0 = a distinct branch, 1 = a fine twig that folds onto its meridian (fades out),
+      //       3 = a copy that coincides with its sibling until the strands separate
+      const kind=k<=Dm?((s&((1<<(Dm-k))-1))?3:0):((s&((1<<(k-Dm))-1))?1:0);
+      for(let q=0;q<nk;q++){metaData[o]=pStart[k]+q;metaData[o+1]=k+q/nk;metaData[o+2]=k+(q+1)/nk;metaData[o+3]=kind+(k===D&&q===nk-1?10:0);o+=4;}}}
+  gl.bindBuffer(gl.ARRAY_BUFFER,brMeta);gl.bufferData(gl.ARRAY_BUFFER,metaData,gl.STATIC_DRAW);
+  fitTree=computeModel(0);ymaxAll0=modelMaxY;ymaxRep0=repModel(0).ymax;boat.dirty=true;
+  if(D!==lastD){lastD=D;resetFlow();}
+}
+function computeModel(t){   // upper half; the lower half is its mirror. One weight t for every segment.
+  const hf=+$('hole').value;RT=KZ*fitTree/(2+hf);
+  const h=hf*RT,segL=2*RT*Math.sin(Math.PI/(2*M)),PI=Math.PI;
+  let fit=0,ymax=0;
+  for(let k=0;k<=D;k++){
+    const nk=nSeg[k],S=Sk[k],Pk=P[k],A=nodeA[k],Ph=nodeP[k],Ln=nodeL[k],j0=pStart[k],stride=(nk+1)*3;
+    const pk=k?nSeg[k-1]:0,Pp=k?P[k-1]:null,pst=(pk+1)*3;
+    for(let s=0;s<S;s++){
+      const g=k<=Dm?s:s>>(k-Dm),nd=k<=Dm?s>>(Dm-k):s,U=Ug[g];
+      let x,y,z,o=s*stride;
+      if(k===0){x=h*Math.cos(U)*t;y=0;z=h*Math.sin(U)*t;}
+      else{const ps=(k-1>=Dm)?s>>1:s,po=ps*pst+pk*3;x=Pp[po];y=Pp[po+1];z=Pp[po+2];}
+      Pk[o]=x;Pk[o+1]=y;Pk[o+2]=z;
+      const L0=Ln[nd],len0=L0*Math.pow(segL/L0,t);     // branches lengthen at a constant (geometric) rate, matching the zoom
+      // a fine twig (finer than its meridian) folds onto the strand it belongs to during the first half of the bloom,
+      // following that strand's live path, so the branching visibly gathers into the main currents
+      const sr=k>Dm?(s>>(k-Dm))<<(k-Dm):s,fold=sr!==s?sm(t/0.55):0,hA=HA[k],hP=HP[k],hL=HL[k];
+      for(let q=0;q<nk;q++){
+        const a0=A[nd*nk+q],p0=k===0?U:Ph[nd*nk+q];let dp=U-p0;dp-=TAU*Math.round(dp/TAU);   // the trunk opens symmetrically: no lean
+        let a=a0+(PI*(j0+q+0.5)/M-a0)*t,ph=p0+dp*t,len=len0;
+        if(fold>0){const r=sr*nk+q;let d2=hP[r]-ph;d2-=TAU*Math.round(d2/TAU);a+=(hA[r]-a)*fold;ph+=d2*fold;len+=(hL[r]-len)*fold;}
+        const ii=s*nk+q;hA[ii]=a;hP[ii]=ph;hL[ii]=len;
+        const sa=Math.sin(a);
+        x+=len*sa*Math.cos(ph);y+=len*Math.cos(a);z+=len*sa*Math.sin(ph);
+        o+=3;Pk[o]=x;Pk[o+1]=y;Pk[o+2]=z;
+        const d=x*x+y*y+z*z;if(d>fit)fit=d;if(y>ymax)ymax=y;}
+    }
+  }
+  modelMaxY=ymax;
+  return Math.sqrt(fit);
+}
+function packBranches(){let o=0;        // without float render targets, the morph runs here and is uploaded
+  for(let k=0;k<=D;k++){const nk=nSeg[k],S=Sk[k],Pk=P[k],stride=(nk+1)*3;
+    for(let s=0;s<S;s++){let b=s*stride;
+      for(let q=0;q<nk;q++,b+=3,o+=8){posData[o]=Pk[b];posData[o+1]=Pk[b+1];posData[o+2]=Pk[b+2];posData[o+3]=1;
+        posData[o+4]=Pk[b+3];posData[o+5]=Pk[b+4];posData[o+6]=Pk[b+5];posData[o+7]=1;}}}
+  gl.bindTexture(gl.TEXTURE_2D,posTex);gl.texSubImage2D(gl.TEXTURE_2D,0,0,0,TEXW,texH,gl.RGBA,gl.FLOAT,posData);}
+function repModel(t){   // the meridian strands only: enough to know how high the structure stands and how far apart the halves' tips are
+  const segL=2*RT*Math.sin(Math.PI/(2*M));let ymax=0,tip=0;
+  for(let g=0;g<NG;g++){const sl=segL;let y=0;
+    for(let k=0;k<=D;k++){const nk=nSeg[k],nd=k<=Dm?g>>(Dm-k):g<<(k-Dm),A=nodeA[k],L0=nodeL[k][nd],len=L0*Math.pow(sl/L0,t),j0=pStart[k];
+      for(let q=0;q<nk;q++){const a0=A[nd*nk+q];y+=len*Math.cos(a0+(Math.PI*(j0+q+0.5)/M-a0)*t);if(y>ymax)ymax=y;}}
+    tip=Math.max(tip,Math.abs(y));}
+  return {ymax,tip};}
+function morphUniforms(Pg){const U_=Pg.u;
+  gl.uniform1i(U_.uD,D);gl.uniform1i(U_.uDm,Dm);gl.uniform1i(U_.uM,M);
+  gl.uniform1iv(U_['uNk[0]'],flowNk);gl.uniform1iv(U_['uPs[0]'],flowPs);gl.uniform1iv(U_['uNOff[0]'],nOff);
+  gl.uniform1fv(U_['uUg[0]'],Ug);
+  gl.uniform1f(U_.uT,t);gl.uniform1f(U_.uFold,sm(t/0.55));gl.uniform1f(U_.uSegL,2*RT*Math.sin(Math.PI/(2*M)));gl.uniform1f(U_.uH,(+$('hole').value)*RT);
+  gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,nodeTex);gl.uniform1i(U_.uNode,0);}
+function gpuMorph(){
+  gl.disable(gl.BLEND);gl.bindVertexArray(VAO_EMPTY);
+  gl.useProgram(P_START.p);morphUniforms(P_START);
+  gl.uniform1iv(P_START.u['uSOff[0]'],sOff);gl.uniform1i(P_START.u.uNS,nStr);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,startFB);gl.viewport(0,0,TEXW,startH);gl.drawArrays(gl.TRIANGLES,0,3);
+  gl.useProgram(P_SEG.p);morphUniforms(P_SEG);
+  gl.uniform1iv(P_SEG.u['uOff[0]'],flowOff);gl.uniform1iv(P_SEG.u['uSOff[0]'],sOff);gl.uniform1i(P_SEG.u.uNI,nInst);
+  gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,startTex);gl.uniform1i(P_SEG.u.uStart,1);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,posFB);gl.viewport(0,0,TEXW,texH);gl.drawArrays(gl.TRIANGLES,0,3);
+  gl.activeTexture(gl.TEXTURE0);}
+
+/* =====================================================================
+   Camera: one constant-rate zoom (log scale) and one constant-rate rise in viewing angle.
+   ===================================================================== */
+const HOME_VIEW={elevation:0.16,azimuth:-0.18,scale:1.14,centerX:0.46,centerY:0.49};
+let viewPanX=0,viewPanY=0;
+const MIN_SCALE=.3,MAX_SCALE=30;
+let rxU=0,ry=HOME_VIEW.azimuth,rz=0,yaw=0,scale=HOME_VIEW.scale,zoomF=1,camFit=1,sceneFit=1,Scam=1;
+const Rm=[1,0,0,0,1,0,0,0,1];
+const RX_TREE=0.05;          // nearly side-on for the tree; the completed view opens low over the water
+function camera(t){
+  sceneFit=fitTree*Math.pow(KZ,t);
+  zoomF=G<M?Math.pow(ZG,1-G/M):1;
+  camFit=sceneFit/zoomF;
+  const frameFit=Math.min(1,CW/(Math.min(CW,CH)*1.22));
+  Scam=Math.min(CW,CH)*0.4*scale/camFit*lerp(1,frameFit,sm(t));
+  // composed shots, all from the lens: a flat telephoto look for the tree, opening into a wider lens as it
+  // becomes a volume (a dolly-zoom: the framing holds while the perspective deepens), at one constant rate
+  camF=14*Math.pow(3.4/14,t);
+  floorY=0;ctrX=lerp(0.5,HOME_VIEW.centerX,sm(t))+viewPanX;ctrY=lerp(0.5,HOME_VIEW.centerY,sm(t))+viewPanY;
+  // the eye may come down to the waterline but never below it
+  const dist=camF*sceneFit,base=lerp(RX_TREE,HOME_VIEW.elevation,t);
+  const minRx=Math.asin(Math.max(-1,Math.min(1,(floorY+0.004*sceneFit)/dist)));
+  const rx=Math.max(minRx,Math.min(1.45,base+rxU));rxU=rx-base;
+  // world → camera: turn about the vertical axis (horizon stays level), then elevation, then roll
+  const yw=yaw+ry,cw=Math.cos(yw),sw=Math.sin(yw),cx=Math.cos(rx),sx=Math.sin(rx),cz=Math.cos(rz),sz=Math.sin(rz);
+  const Ry=[cw,0,sw, 0,1,0, -sw,0,cw],Rx=[1,0,0, 0,cx,-sx, 0,sx,cx],Rz=[cz,-sz,0, sz,cz,0, 0,0,1];
+  const mul=(A,B)=>{const C=new Array(9);for(let r=0;r<3;r++)for(let c=0;c<3;c++)C[r*3+c]=A[r*3]*B[c]+A[r*3+1]*B[3+c]+A[r*3+2]*B[6+c];return C;};
+  const R_=mul(Rz,mul(Rx,Ry));for(let i=0;i<9;i++)Rm[i]=R_[i];
+}
+function projCPU(x,y,z){const X=Rm[0]*x+Rm[1]*y+Rm[2]*z,Y=Rm[3]*x+Rm[4]*y+Rm[5]*z,Z=Rm[6]*x+Rm[7]*y+Rm[8]*z;
+  const k=camF/Math.max(0.5,camF-Z/sceneFit);return [CW*ctrX+X*Scam*k,CH*ctrY-Y*Scam*k];}
+
+/* =====================================================================
+   A rower in a small dinghy, for scale. He enters from the bottom of the frame and pulls slowly up
+   and across toward the right edge, well clear of the torus. The dinghy is a lofted hull (raised
+   sheer, transom, dark interior, a thwart); the rower is jointed and in proportion and faces the
+   stern, as rowers do, moving through a real stroke: reach at the catch, lean back on the drive with
+   the blades in the water, hands drawn in at the finish, blades feathered clear on the recovery.
+   Both are shaded only by the structure's light, so they read almost as a silhouette with a faint
+   green edge, and they appear again in the water. Behind them runs a Kelvin wake, and each stroke
+   leaves a pair of puddles where the blades came out.
+   ===================================================================== */
+const BOAT_VS=`#version 300 es
+precision highp float;
+layout(location=0) in vec3 aP;layout(location=1) in vec3 aN;layout(location=2) in vec3 aA;layout(location=3) in float aMat;
+${PROJ}
+uniform vec3 uLP,uEye,uBoatOrigin,uMeshOrigin;uniform mat3 uRock;
+uniform float uLift,uBoatSize,uLean,uHeadAngle,uHeadYaw,uBlink;uniform vec2 uHeading;uniform int uMeshRig;
+out vec3 vC,vP,vN,vA,vModel;flat out float vMat;
+vec3 bend(vec3 q,float angle,vec2 pivot){float c=cos(angle),s=sin(angle);vec2 d=q.xy-pivot;q.xy=pivot+mat2(c,s,-s,c)*d;return q;}
+void main(){vec3 p=aP,N=aN;vModel=vec3(0.);
+  if(uMeshRig>0){
+    vec2 d=p.xz-uMeshOrigin.xz;
+    p=vec3(dot(d,uHeading),p.y,dot(d,vec2(-uHeading.y,uHeading.x)))/uBoatSize;
+    N=vec3(dot(N.xz,uHeading),N.y,dot(N.xz,vec2(-uHeading.y,uHeading.x)));
+    vModel=p;
+    if(uMeshRig==3){
+      if(aMat>=6.&&aMat<=8.){float blink=1.-.96*uBlink;p.y=.400+(p.y-.400)*blink;N.y/=max(.08,blink);}
+      p=bend(p,uHeadAngle,vec2(.01,.357));N=bend(N,uHeadAngle,vec2(0.));
+      mat2 yawM=mat2(cos(uHeadYaw),sin(uHeadYaw),-sin(uHeadYaw),cos(uHeadYaw));p.xz=vec2(.01,0.)+yawM*(p.xz-vec2(.01,0.));N.xz=yawM*N.xz;
+    }
+    if(uMeshRig>=2){p=bend(p,uLean,vec2(.01,.119));N=bend(N,uLean,vec2(0.));}
+    p=uBoatOrigin+uBoatSize*vec3(uHeading.x*p.x-uHeading.y*p.z,p.y,uHeading.y*p.x+uHeading.x*p.z);
+    N=vec3(uHeading.x*N.x-uHeading.y*N.z,N.y,uHeading.y*N.x+uHeading.x*N.z);
+  }
+  p=uBoatOrigin+uRock*(p-uBoatOrigin)+vec3(0.,uLift,0.);N=uRock*N;vec3 q=proj(p);
+  vec3 Ld=normalize(uLP-p),V=normalize(uEye-p),lc=vec3(0.32,1.,0.55);
+  float df=max(0.,dot(N,Ld)),rim=pow(1.-abs(dot(N,V)),2.5)*smoothstep(-0.25,0.6,dot(N,Ld));
+  vC=aA*(0.04+3.2*df)*lc+lc*0.55*rim;if(uRefl>0.5)vC*=0.45;
+  vP=p;vN=N;vA=aA;vMat=aMat==6.?4.:(aMat==7.||aMat==8.?2.:aMat);
+  gl_Position=toClip(q.xy);
+  float depth=max(0.5,uF-q.z/uPF);gl_Position=vec4(gl_Position.xy*depth,depth-1.,depth);}`;
+const BOAT_FS=`#version 300 es
+precision highp float;
+in vec3 vC,vP,vN,vA,vModel;flat in float vMat;uniform vec3 uLP,uEye;uniform float uDetail,uRefl,uLift,uBoatSize;uniform vec3 uBoatOrigin;uniform mat3 uRock;out vec4 o;
+vec3 surfaceBump(vec3 n,float h){
+  vec3 dx=dFdx(vP),dy=dFdy(vP),r1=cross(dy,n),r2=cross(n,dx);float det=dot(dx,r1);
+  return normalize((abs(det)+1e-12)*n-sign(det)*(dFdx(h)*r1+dFdy(h)*r2));
+}
+void main(){if(vP.y<0.)discard;vec3 N=normalize(vN),L=normalize(uLP-vP),V=normalize(uEye-vP),lc=vec3(0.32,1.,0.55);
+  float df=max(0.,dot(N,L)),rim=pow(1.-abs(dot(N,V)),2.5)*smoothstep(-0.25,0.6,dot(N,L));
+  float fabric=step(vA.r,vA.b),shine=pow(max(0.,dot(N,normalize(L+V))),24.)*df;
+  vec3 local=transpose(uRock)*(vP-uBoatOrigin-vec3(0.,uLift,0.))/uBoatSize;
+  float fibres=sin(local.x*590.)*sin(local.y*720.+local.z*350.);
+  float footprint=max(length(dFdx(local)),length(dFdy(local)));
+  float textureGain=1.+fabric*.025*fibres*(1.-smoothstep(.001,.004,footprint));
+  vec3 closeC=vA*textureGain*(1.05+.2*fabric+4.8*df)*lc+lc*(mix(.42,.16,fabric)*rim+mix(.065,.01,fabric)*shine);
+  if(vMat>0.5){
+    // Soft environmental fill, distinct roughness and material response for the rower.
+    // Hull lighting remains on the original path above.
+    float cloth=1.-step(1.5,vMat),skin=step(1.5,vMat)*(1.-step(2.5,vMat));
+    float hair=step(2.5,vMat)*(1.-step(3.5,vMat));
+    vec3 materialC=vA;
+    float hairTexture=1.;
+    if(hair>.5){
+      vec3 hp=vModel-vec3(.008,.392,0.);float az=atan(hp.z,-hp.x),height=(hp.y+.043)/.091;
+      float sweep=az+.64*smoothstep(.1,.95,height)+.055*sin(az*3.+height*5.);
+      float strand=105.*sweep+.7*sin(az*11.+height*19.);
+      float strandFade=1.-smoothstep(.8,2.6,fwidth(strand));
+      float comb=sin(strand)+.38*sin(strand*1.73+.7);
+      hairTexture=1.+.10*comb*strandFade;
+      N=surfaceBump(N,uBoatSize*.000022*comb*strandFade);
+    }
+    vec3 tissue=vModel.y>.35?vModel:local;
+    float microPhase=dot(tissue,vec3(1720.,2190.,1470.));
+    float skinFilter=1.-smoothstep(.5,2.,fwidth(microPhase));
+    float grain=sin(microPhase)*sin(dot(tissue,vec3(1930.,-1580.,2610.)));
+    materialC*=1.+skin*.025*grain*skinFilter;
+    float rough=mix(.56,.91,cloth);rough=mix(rough,.64,hair);rough+=skin*.035*grain*skinFilter;
+    vec3 H=normalize(L+V);float nv=max(.02,dot(N,V)),nl=max(0.,dot(N,L)),nh=max(.001,dot(N,H)),vh=max(.001,dot(V,H));
+    float a=rough*rough,a2=a*a,den=nh*nh*(a2-1.)+1.;
+    float ggx=a2/(3.14159265*den*den),k=(rough+1.)*(rough+1.)/8.;
+    float geom=(nv/(nv*(1.-k)+k))*(nl/(nl*(1.-k)+k));
+    float fres=.028+.972*pow(1.-vh,5.);
+    float spec=ggx*geom*fres/max(.04,4.*nv*max(.02,nl));
+    vec3 ambient=vec3(.62,.76,.84)*(.55+.16*N.y);
+    float texture=1.+cloth*.04*fibres*(1.-smoothstep(.001,.004,footprint));
+    vec3 human=materialC*texture*hairTexture*(ambient+lc*4.8*nl)+lc*spec*.18;
+    // A broad, weak skin response softens the terminator without a plastic rim.
+    human+=vA*lc*skin*.24*pow(max(0.,dot(-N,L)),2.);
+    human+=materialC*lc*hair*.28*pow(max(0.,dot(N,H)),12.);
+    closeC=human;
+  }
+  if(uRefl>0.5)closeC*=0.45;
+  o=vec4(mix(vC,closeC,uDetail),1.);}`;
+const P_BOAT=program(BOAT_VS,BOAT_FS),boatBuf=gl.createBuffer(),VAO_BOAT=gl.createVertexArray();
+gl.bindVertexArray(VAO_BOAT);gl.bindBuffer(gl.ARRAY_BUFFER,boatBuf);
+for(let i=0;i<3;i++){gl.enableVertexAttribArray(i);gl.vertexAttribPointer(i,3,gl.FLOAT,false,40,i*12);}
+gl.enableVertexAttribArray(3);gl.vertexAttribPointer(3,1,gl.FLOAT,false,40,36);
+gl.bindVertexArray(null);
+const BOAT_T=150,STROKE=3.8;let boatEpoch=0;
+const boat={A:[0,0],B:[1,0],L:1,dirty:true,cw:0,ch:0,pos:[0,0],h:[1,0],v:0,oarT:0,n:0,data:new Float32Array(0)};
+function traceWater(sx,sy){
+  const T=v=>[Rm[0]*v[0]+Rm[3]*v[1]+Rm[6]*v[2],Rm[1]*v[0]+Rm[4]*v[1]+Rm[7]*v[2],Rm[2]*v[0]+Rm[5]*v[1]+Rm[8]*v[2]];
+  const Ec=[0,0,camF*sceneFit],E=T(Ec),d=T([(sx-CW*ctrX)/Scam,-(sy-CH*ctrY)/Scam,-Ec[2]]);
+  if(d[1]>=-1e-9)return null;const l=(floorY-E[1])/d[1];return [E[0]+d[0]*l,E[2]+d[2]*l];}
+function placeBoat(){        // a gently oblique passage, with open water between the dinghy and the torus
+  const keep={G,rxU,ry,rz,yaw,scale};G=M;rxU=0.26-HOME_VIEW.elevation;ry=0;rz=0;yaw=0;scale=1.35;camera(1);
+  // Anchor the approved route in its original lens, independently of the home composition.
+  Scam=Math.min(CW,CH)*0.4*scale/camFit;ctrX=0.5;ctrY=0.5;
+  const A=traceWater(CW*0.7,CH*1.05),B=traceWater(CW*1.04,CH*0.65);
+  G=keep.G;rxU=keep.rxU;ry=keep.ry;rz=keep.rz;yaw=keep.yaw;scale=keep.scale;
+  boat.L=0.07*fitTree*KZ;
+  if(A&&B){
+    const L=boat.L,dx=B[0]-A[0],dz=B[1]-A[1],angle=8*Math.PI/180,c=Math.cos(angle),s=Math.sin(angle);
+    boat.A=[A[0]+0.7*L,A[1]+0.35*L];
+    boat.B=[boat.A[0]+dx*c-dz*s,boat.A[1]+dx*s+dz*c];
+  }
+  boat.dirty=false;camera(t);}
+const V3={add:(a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]],sub:(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]],mul:(a,k)=>[a[0]*k,a[1]*k,a[2]*k],
+  dot:(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2],len:a=>Math.hypot(a[0],a[1],a[2]),
+  nrm:a=>{const l=Math.hypot(a[0],a[1],a[2])||1;return [a[0]/l,a[1]/l,a[2]/l];},
+  crs:(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]]};
+// Buoyancy follows the existing contact wave, sampled across the hull.
+// A damped response gives the dinghy weight rather than copying every small crest.
+const BOAT_FLOAT={gain:1.6,heavePeriod:.9,pitchPeriod:.9,rollPeriod:1.15,damping:.7};
+function contactWaterHeight(x,z,age){
+  if(age<0||age>=6)return 0;
+  const c=camFit,R=(+$('hole').value+2)*RT,r=Math.hypot(x,z),v=.22*c,lambda=.07*c;
+  const k=TAU/lambda,w=lambda*(.7+.7*age),amplitude=.9*Math.exp(-age/1.6)/k;
+  const packet=d=>Math.abs(d)<3*w?amplitude*Math.exp(-d*d/(w*w))*Math.sin(k*d):0;
+  const inward=R-v*age>-w?packet(R-r-v*age)*sm(age/.10):0;
+  return (packet(r-R-v*age)+inward)*(1-sm((age-5.3)/.7));
+}
+function boatFloatTarget(age,pos=boat.pos){
+  if(age<=0||age>=6)return [0,0,0];
+  const L=boat.L,[hx,hz]=boat.h;
+  const at=(x,z)=>contactWaterHeight(pos[0]+(hx*x-hz*z)*L,pos[1]+(hz*x+hx*z)*L,age);
+  const bow=(at(.3,-.13)+at(.3,.13))*.5,stern=(at(-.3,-.13)+at(-.3,.13))*.5;
+  const port=(at(-.18,.16)+at(.18,.16))*.5,starboard=(at(-.18,-.16)+at(.18,-.16))*.5;
+  const heave=(bow+stern+port+starboard+2*at(0,0))/6;
+  const limit=(x,m)=>Math.max(-m,Math.min(m,x));
+  return [limit(heave*BOAT_FLOAT.gain,.045*L),limit(Math.atan2(bow-stern,.6*L)*BOAT_FLOAT.gain,.12),
+    limit(-Math.atan2(port-starboard,.32*L)*BOAT_FLOAT.gain,.16)];
+}
+function resetBoatFloat(){boat.floatState={at:clock,age:-999,impactAt:null,p:[0,0,0],v:[0,0,0]};boat.lift=0;boat.pitch=0;boat.roll=0;}
+function updateBoatFloat(){
+  const age=$('auto').checked?globalT()-T_TOUCH:meetT;
+  if(!boat.floatState)resetBoatFloat();
+  let f=boat.floatState,elapsed=clock-f.at;
+  if(age<0||elapsed<0||Math.abs(age-f.age-elapsed)>.2){resetBoatFloat();f=boat.floatState;elapsed=0;}
+  // Work in small steps, including the boat's position while the wave travels under it.
+  const dt=Math.min(elapsed,.25),steps=Math.ceil(dt*120),h=steps?dt/steps:0;
+  const periods=[BOAT_FLOAT.heavePeriod,BOAT_FLOAT.pitchPeriod,BOAT_FLOAT.rollPeriod];
+  for(let i=0;i<steps;i++){
+    const ago=dt-(i+1)*h,target=boatFloatTarget(age-ago,[boat.pos[0]-boat.h[0]*boat.v*ago,boat.pos[1]-boat.h[1]*boat.v*ago]);
+    for(let j=0;j<3;j++){
+      const omega=TAU/periods[j],a=omega*omega*(target[j]-f.p[j])-2*BOAT_FLOAT.damping*omega*f.v[j];
+      f.v[j]+=a*h;f.p[j]+=f.v[j]*h;
+      if(Math.abs(f.p[j])+Math.abs(f.v[j])<1e-9){f.p[j]=0;f.v[j]=0;}
+    }
+  }
+  // The main expanding crest gives the hull a readable, slower reaction.
+  // Fine carrier ripples remain in the buoyancy samples above.
+  const radius=Math.hypot(...boat.pos),c=camFit,R=(+$('hole').value+2)*RT;
+  const gap=radius-R-.22*c*age;
+  if(f.impactAt===null&&age>0&&age<6&&gap<=0){
+    const radialV=boat.v*(boat.h[0]*boat.pos[0]+boat.h[1]*boat.pos[1])/radius;
+    f.impactAt=age+gap/Math.max(.01,.22*c-radialV);
+  }
+  let lift=0,pitch=0,roll=0;
+  if(f.impactAt!==null){
+    const tau=Math.max(0,age-f.impactAt),fade=1-sm((tau-4)/1.5),decay=Math.exp(-tau/1.15)*fade;
+    const forward=(boat.h[0]*boat.pos[0]+boat.h[1]*boat.pos[1])/radius;
+    const across=(-boat.h[1]*boat.pos[0]+boat.h[0]*boat.pos[1])/radius;
+    lift=.06*boat.L*decay*Math.sin(TAU*tau/1.25);
+    pitch=.14*forward*decay*Math.sin(TAU*tau/1.65);
+    roll=-.18*across*decay*Math.sin(TAU*tau/1.85);
+  }
+  f.at=clock;f.age=age;boat.lift=f.p[0]+lift;boat.pitch=f.p[1]+pitch;boat.roll=f.p[2]+roll;
+  const cp=Math.cos(boat.pitch),sp=Math.sin(boat.pitch),cr=Math.cos(boat.roll),sr=Math.sin(boat.roll),[hx,hz]=boat.h;
+  const rotate=q=>{
+    const x=hx*q[0]+hz*q[2],z=-hz*q[0]+hx*q[2],px=cp*x-sp*q[1],py=sp*x+cp*q[1];
+    const y=cr*py-sr*z,rz=sr*py+cr*z;return [hx*px-hz*rz,y,hz*px+hx*rz];
+  };
+  boat.rotation=[...rotate([1,0,0]),...rotate([0,1,0]),...rotate([0,0,1])];
+}
+function boatFloatPoint(q,inverse=false){
+  const R=boat.rotation||[1,0,0,0,1,0,0,0,1],P=boat.pos;
+  if(inverse){const x=q[0]-P[0],y=q[1]-(boat.lift||0),z=q[2]-P[1];
+    return [P[0]+R[0]*x+R[1]*y+R[2]*z,R[3]*x+R[4]*y+R[5]*z,P[1]+R[6]*x+R[7]*y+R[8]*z];}
+  const x=q[0]-P[0],y=q[1],z=q[2]-P[1];
+  return [P[0]+R[0]*x+R[3]*y+R[6]*z,(boat.lift||0)+R[1]*x+R[4]*y+R[7]*z,P[1]+R[2]*x+R[5]*y+R[8]*z];
+}
+
+function boatMeshPacket(tris,rig,pos){
+  const data=new Float32Array(tris.length*30),lo=[Infinity,Infinity,Infinity],hi=[-Infinity,-Infinity,-Infinity];let o=0;
+  for(const T of tris)for(let v=0;v<3;v++){const q=T[v];data.set(q,o);data.set(T[5]?T[5][v]:T[3],o+3);data.set(T[6]?T[6][v]:T[4],o+6);data[o+9]=T[7]||0;o+=10;
+    for(let k=0;k<3;k++){lo[k]=Math.min(lo[k],q[k]);hi[k]=Math.max(hi[k],q[k]);}}
+  const buffer=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.bufferData(gl.ARRAY_BUFFER,data,gl.STATIC_DRAW);
+  return {buffer,n:tris.length*3,bounds:[lo,hi],rig,pos:pos.slice()};
+}
+function boatMeshPoint(q,mesh){
+  const [hx,hz]=boat.h,L=boat.L,dx=q[0]-mesh.pos[0],dz=q[2]-mesh.pos[1];
+  let x=(hx*dx+hz*dz)/L,y=q[1]/L,z=(-hz*dx+hx*dz)/L;
+  const rot=(angle,px,py)=>{const c=Math.cos(angle),s=Math.sin(angle),xx=x-px,yy=y-py;x=px+c*xx-s*yy;y=py+s*xx+c*yy;};
+  if(mesh.rig===3){rot(boat.headAngle,.01,.357);const c=Math.cos(boat.headYaw),s=Math.sin(boat.headYaw),xx=x-.01;[x,z]=[.01+c*xx-s*z,s*xx+c*z];}
+  if(mesh.rig>=2)rot(boat.lean,.01,.119);
+  return [boat.pos[0]+(hx*x-hz*z)*L,y*L,boat.pos[1]+(hz*x+hx*z)*L];
+}
+function bindBoatBuffer(buffer){
+  gl.bindBuffer(gl.ARRAY_BUFFER,buffer);
+  for(let i=0;i<3;i++)gl.vertexAttribPointer(i,3,gl.FLOAT,false,40,i*12);
+  gl.vertexAttribPointer(3,1,gl.FLOAT,false,40,36);
+}
+function updateBoat(){
+  if(boat.dirty||boat.cw!==CW||boat.ch!==CH){placeBoat();boat.cw=CW;boat.ch=CH;}
+  const A=boat.A,B=boat.B,dx=B[0]-A[0],dz=B[1]-A[1],len=Math.hypot(dx,dz)||1,u=(clock-boatEpoch)/BOAT_T-0.05;   // one continuous passage: enter, cross the water, continue out of view
+  boat.h=[dx/len,dz/len];boat.pos=[A[0]+dx*u,A[1]+dz*u];boat.v=len/BOAT_T;
+  boat.oarT=(((clock-0.38*STROKE)%STROKE)+STROKE)%STROKE;          // time since the blades last left the water
+  updateBoatFloat();
+  const L=boat.L,P=boat.pos,hx=boat.h[0],hz=boat.h[1];
+  const W=q=>[P[0]+hx*q[0]*L-hz*q[2]*L,q[1]*L,P[1]+hz*q[0]*L+hx*q[2]*L];   // boat-local (bow, up, port) in boat lengths → world
+  const tris=[];
+  const tri=(a,b,c,alb,ctr)=>{const A_=W(a),B_=W(b),C_=W(c);let n=V3.nrm(V3.crs(V3.sub(B_,A_),V3.sub(C_,A_)));
+    if(ctr){const m=V3.mul(V3.add(V3.add(A_,B_),C_),1/3);if(V3.dot(n,V3.sub(m,W(ctr)))<0)n=V3.mul(n,-1);}tris.push([A_,B_,C_,n,alb.color||alb,null,null,alb.type||0]);};
+  const quad=(a,b,c,d,alb,ctr)=>{tri(a,b,c,alb,ctr);tri(a,c,d,alb,ctr);};
+  // Curved surfaces carry vertex normals rather than a flat normal per triangle.
+  // Detail follows projected size, so the small passing silhouette stays inexpensive.
+  const detail=boatDetail();let radial=detail>.15?12:8,rounds=detail>.15?7:5;
+  const worldN=n=>V3.nrm([hx*n[0]-hz*n[2],n[1],hz*n[0]+hx*n[2]]);
+  let fastNormals=false;
+  const surface=(fn,nu,nv,alb,center,inward=false)=>{
+    const verts=[];
+    // Evaluate each point once. Grid derivatives give shared, smooth normals.
+    for(let i=0;i<=nu;i++)for(let j=0;j<=nv;j++){
+      const u=i/nu,v=j/nv,q=fn(u,v);
+      verts.push({q,p:W(q),c:fn.color?fn.color(q,u,v):(alb.color||alb)});
+    }
+    for(let i=0;i<=nu;i++)for(let j=0;j<=nv;j++){
+      const item=verts[i*(nv+1)+j],u=i/nu,v=j/nv,q=item.q;let n;
+      if(fn.normal)n=V3.nrm(fn.normal(q,u,v));
+      else if(fastNormals){
+        const du=V3.sub(verts[Math.min(nu,i+1)*(nv+1)+j].q,verts[Math.max(0,i-1)*(nv+1)+j].q);
+        const dv=V3.sub(verts[i*(nv+1)+(j===nv?1:(j+1)%nv)].q,verts[i*(nv+1)+(j===0||j===nv?nv-1:j-1)].q);
+        n=V3.nrm(V3.crs(du,dv));
+      }else{const eps=.0001,du=V3.sub(fn(u+eps,v),fn(u-eps,v)),dv=V3.sub(fn(u,v+eps),fn(u,v-eps));n=V3.nrm(V3.crs(du,dv));}
+      if(V3.dot(n,V3.sub(q,center(u)))<0)n=V3.mul(n,-1);
+      if(inward)n=V3.mul(n,-1);item.n=worldN(n);
+    }
+    const emit=(a,b,c)=>tris.push([a.p,b.p,c.p,a.n,alb.color||alb,[a.n,b.n,c.n],[a.c,b.c,c.c],alb.type||0]);
+    for(let i=0;i<nu;i++)for(let j=0;j<nv;j++){
+      const a=verts[i*(nv+1)+j],b_=verts[(i+1)*(nv+1)+j],c=verts[(i+1)*(nv+1)+j+1],d_=verts[i*(nv+1)+j+1];
+      emit(a,b_,c);emit(a,c,d_);
+    }
+  };
+  const ellipsoid=(cn,r,alb,axes=null)=>{
+    const ax=axes||[[1,0,0],[0,1,0],[0,0,1]];
+    const fn=(u,v)=>{
+      const ph=Math.PI*(.0001+.9998*u),th=TAU*v;
+      return V3.add(cn,V3.add(V3.mul(ax[0],r[0]*Math.sin(ph)*Math.cos(th)),
+        V3.add(V3.mul(ax[1],r[1]*Math.cos(ph)),V3.mul(ax[2],r[2]*Math.sin(ph)*Math.sin(th)))));
+    };
+    fn.normal=q=>{const d_=V3.sub(q,cn);return V3.add(V3.mul(ax[0],V3.dot(d_,ax[0])/(r[0]*r[0])),
+      V3.add(V3.mul(ax[1],V3.dot(d_,ax[1])/(r[1]*r[1])),V3.mul(ax[2],V3.dot(d_,ax[2])/(r[2]*r[2]))));};
+    surface(fn,rounds,radial,alb,()=>cn);
+  };
+  const tube=(p0,p1,r0,r1,alb,bump=0)=>{
+    const axis=V3.nrm(V3.sub(p1,p0));let a=V3.crs(axis,[0,1,0]);
+    if(V3.len(a)<.001)a=V3.crs(axis,[1,0,0]);a=V3.nrm(a);const b_=V3.crs(axis,a);
+    const cn=u=>V3.add(p0,V3.mul(V3.sub(p1,p0),u));
+    const fn=(u,v)=>{const r=lerp(r0,r1,u)+bump*Math.sin(Math.PI*u),th=TAU*v;
+      return V3.add(cn(u),V3.add(V3.mul(a,r*Math.cos(th)),V3.mul(b_,r*Math.sin(th))));};
+    fn.normal=(q,u)=>V3.sub(V3.nrm(V3.sub(q,cn(u))),V3.mul(axis,(r1-r0+bump*Math.PI*Math.cos(Math.PI*u))/V3.len(V3.sub(p1,p0))));
+    surface(fn,detail>.15?3:2,radial,alb,cn);
+  };
+  const curveTube=(path,r,alb,steps=24)=>{
+    surface((u,v)=>{const c=path(u),axis=V3.nrm(V3.sub(path(u+.0001),path(u-.0001)));
+      let a=V3.crs(axis,[0,1,0]);if(V3.len(a)<.001)a=V3.crs(axis,[1,0,0]);
+      a=V3.nrm(a);const b_=V3.crs(axis,a),th=TAU*v;
+      return V3.add(c,V3.add(V3.mul(a,r*Math.cos(th)),V3.mul(b_,r*Math.sin(th))));
+    },steps,detail>.15?10:6,alb,path);
+  };
+  const METAL=[.065,.070,.071],hullKey=[L,hx,hz,detail>.15,detail>.08].join(',');
+  const sh=x=>.15+.06*Math.pow(2*x,2)+.03*Math.pow(Math.max(0,2*x),2);
+  if(!boat.hullMesh||boat.hullMesh.key!==hullKey){
+    if(boat.hullMesh)gl.deleteBuffer(boat.hullMesh.packet.buffer);
+  const HULL=[.06,.056,.046],INSIDE=[.031,.030,.026],WOOD=[.105,.086,.060];
+  const b=x=>.215*Math.sqrt(Math.max(.00005,1-Math.pow((x+.055)/.555,2)));
+  const hull=(u,v,sd,inside)=>{const x=-.5+u,th=v*Math.PI/2;
+    return [x,sh(x)-(sh(x)+(inside?-.022:.055))*Math.sin(th),b(x)*(inside?.91:1)*Math.cos(th)*sd];};
+  const sections=detail>.15?28:16;
+  for(const sd of [-1,1]){
+    surface((u,v)=>hull(u,v,sd,false),sections,detail>.15?8:5,HULL,u=>[-.5+u,.24,0]);
+    surface((u,v)=>hull(u,v,sd,true),sections,detail>.15?7:4,INSIDE,u=>[-.5+u,.24,0],true);
+    curveTube(u=>{const x=-.5+u;return [x,sh(x),sd*b(x)*.96];},.006,WOOD,sections);
+  }
+  // A rounded stern profile, recessed floorboards and a solid wooden seat.
+  surface((u,v)=>{const z=(u*2-1)*b(-.5),edge=sh(-.5),base=-.055+.09*Math.pow(z/b(-.5),2);
+    return [-.5,lerp(base,edge,v),z];},12,2,HULL,()=>[0,.1,0]);
+  const box=(x0,x1,y0,y1,z0,z1,alb)=>{
+    const c=[(x0+x1)/2,(y0+y1)/2,(z0+z1)/2];
+    quad([x0,y1,z0],[x1,y1,z0],[x1,y1,z1],[x0,y1,z1],alb,c);
+    quad([x0,y0,z0],[x0,y1,z0],[x0,y1,z1],[x0,y0,z1],alb,c);
+    quad([x1,y0,z1],[x1,y1,z1],[x1,y1,z0],[x1,y0,z0],alb,c);
+    quad([x0,y0,z0],[x1,y0,z0],[x1,y1,z0],[x0,y1,z0],alb,c);
+    quad([x0,y1,z1],[x1,y1,z1],[x1,y0,z1],[x0,y0,z1],alb,c);
+  };
+  box(-.055,.07,.082,.104,-.191,.191,WOOD);
+  box(.25,.32,.09,.107,-.164,.164,WOOD);
+  if(detail>.08){
+    for(const z of [-.083,-.041,0,.041,.083])box(-.43,.34,.023,.029,z-.018,z+.018,INSIDE);
+    for(const x of [-.33,.18,.36])curveTube(u=>{const th=(u-.5)*Math.PI;return [x,sh(x)-(sh(x)-.022)*Math.cos(th),b(x)*.88*Math.sin(th)];},.004,WOOD,16);
+  }
+    boat.hullMesh={key:hullKey,packet:boatMeshPacket(tris.splice(0),1,P)};
+  }
+  // Human silhouettes need finer sampling than the hull, especially in the entrance shot.
+  radial=detail>.15?12:8;rounds=detail>.15?7:5;
+  // The approved catch, drive, release and recovery remain exactly synchronized with the water.
+  const ph=((clock%STROKE)+STROKE)%STROKE/STROKE,drv=ph<.38,e=drv?sm(ph/.38):sm((ph-.38)/.62);
+  const psi=drv?-.6+1.15*e:.55-1.15*e,lean=drv?.42-.72*e:-.3+.72*e,bladeY=drv?-.01:.05+.03*Math.sin(Math.PI*e);
+  const mat=(color,type)=>({color,type});
+  const CLOTH=mat([.062,.075,.082],1),PANTS=mat([.031,.038,.044],1),SKIN=mat([.19,.135,.096],2),HAIR=mat([.035,.025,.017],3),OAR=[.095,.080,.057],SHOE=mat([.023,.025,.026],5);
+  const EAR=mat([.125,.074,.058],2),LIP=mat([.145,.079,.066],2),MOUTH=mat([.047,.025,.023],2),NOSTRIL=mat([.055,.032,.024],2),EYE=mat([.18,.18,.16],6),IRIS=mat([.024,.035,.031],6),SEAM=mat([.043,.054,.058],1),BUTTON=mat([.028,.031,.032],5);
+  const xs=.01,Hp=[xs,.119,0],dir=[-Math.sin(lean),Math.cos(lean),0],face=[-dir[1],dir[0],0],side=[0,0,1];
+  const Sh=V3.add(Hp,V3.mul(dir,.190)),Nk=V3.add(Hp,V3.mul(dir,.228));
+  ellipsoid([xs,.116,0],[.054,.035,.068],PANTS);
+  const figureKey=[L,hx,hz,detail>.15,detail>.3].join(',');
+  boat.lean=lean;boat.headAngle=-lean*.60-.035+.008*Math.sin(clock*.9);
+  boat.headYaw=.028*Math.sin(clock*.48)+.012*(e-.5);
+  const blinkPhase=(clock+1.7)%5.6;boat.blink=blinkPhase<.23?Math.pow(Math.sin(Math.PI*blinkPhase/.23),2):0;
+  if(!boat.figureMesh||boat.figureMesh.key!==figureKey){
+    const first=tris.length;
+    if(boat.figureMesh)for(const packet of boat.figureMesh.packets)gl.deleteBuffer(packet.buffer);
+    const dir=[0,1,0],face=[-1,0,0],Nk=V3.add(Hp,V3.mul(dir,.228));
+  // An adult head and dressed torso are sculpted once in a neutral pose.
+  // Animation articulates the cached mesh; surface density is reserved for close views.
+  const cat=(values,u,j=0)=>{
+    const f=clamp01(u)*(values.length-1),i=Math.min(values.length-2,Math.floor(f)),k=f-i;
+    const get=n=>Array.isArray(values[n])?values[n][j]:values[n];
+    const a=get(Math.max(0,i-1)),b_=get(i),c=get(i+1),d_=get(Math.min(values.length-1,i+2));
+    return .5*(2*b_+(-a+c)*k+(2*a-5*b_+4*c-d_)*k*k+(-a+3*b_-3*c+d_)*k*k*k);
+  };
+  const torsoR=[[.045,.030],[.046,.032],[.051,.035],[.059,.039],[.065,.040],[.066,.035],[.058,.028],[.022,.019]];
+  const torso=(u,v)=>{
+    const th=TAU*v,y=.222*u,w=cat(torsoR,u,0),d_=cat(torsoR,u,1);
+    const front=Math.sin(th),z=w*Math.cos(th);
+    const waist=.0022*Math.sin(th*3+u*32)*Math.exp(-Math.pow((u-.22)/.18,2));
+    const armpit=.0018*Math.sin(u*42-7*Math.abs(Math.cos(th)))*Math.exp(-Math.pow((u-.77)/.16,2))*Math.pow(Math.abs(Math.cos(th)),3);
+    const fold=waist+armpit+.0006*Math.sin(th*2-u*14)*Math.sin(Math.PI*u);
+    const chest=.004*Math.exp(-Math.pow((u-.64)/.2,2))*Math.max(0,front);
+    return [xs-(d_+fold+chest)*front-.003*Math.sin(Math.PI*u),Hp[1]+y,z];
+  };
+  surface(torso,detail>.15?30:16,detail>.15?32:16,CLOTH,u=>[xs,Hp[1]+.222*u,0]);
+  // A folded, open collar follows the neck rather than a hard cylinder rim.
+  for(const sd of [-1,1])surface((u,v)=>{
+    const z=sd*(.005+.029*u),y=Hp[1]+.222-.017*u-.009*v;
+    return [xs-.019-.014*u-.002*Math.sin(Math.PI*v),y,z];
+  },8,3,CLOTH,()=>[xs,Hp[1]+.21,0]);
+  if(detail>.15){
+    curveTube(u=>[xs-.037+.011*u,Hp[1]+.15+.060*u,0],.0007,SEAM,12);
+    for(let k=0;k<3;k++)ellipsoid([xs-.037+.003*k,Hp[1]+.152+.017*k,0],[.0009,.0012,.0012],BUTTON);
+  }
+  const neck=(u,v)=>{const th=TAU*v,r=lerp(.019,.0145,u),y=Hp[1]+.213+.038*u;
+    return [xs+.002*u-r*Math.cos(th),y,r*.94*Math.sin(th)];};
+  surface(neck,8,detail>.15?24:12,SKIN,u=>[xs,Hp[1]+.213+.038*u,0]);
+  const headAt=tris.length-first;
+  const headC=[xs-.002,Hp[1]+.273,0],headAxes=[face,dir,side];
+  // Profile describes chin, jaw, cheek, brow, cranium and occiput independently.
+  const headRows=[
+    [-.043,.002,.008,.003],[-.038,.013,.018,.006],[-.031,.022,.023,.013],
+    [-.023,.025,.025,.023],[-.015,.028,.027,.030],[-.007,.030,.028,.035],
+    [.001,.0305,.028,.037],[.009,.029,.027,.037],[.018,.029,.029,.035],
+    [.027,.028,.030,.031],[.036,.0235,.025,.025],[.043,.0145,.016,.016],[.048,.0003,.0003,.0003]
+  ];
+  const sculpt=(u,v)=>{
+    const th=TAU*v,y=cat(headRows,u,0),w=Math.max(.0001,cat(headRows,u,1)),f=cat(headRows,u,2),b_=cat(headRows,u,3);
+    const z=w*Math.sin(th),co=Math.cos(th),front=co>=0?f*Math.pow(co,.86):b_*co;
+    const ga=(a,c,sa,sc)=>Math.exp(-Math.pow(a/sa,2)-Math.pow(c/sc,2));
+    const fm=sm(co*4);
+    const eyes=-.0038*(ga(z-.0135,y-.009,.0075,.007)+ga(z+.0135,y-.009,.0075,.007));
+    const cheeks=.003*(ga(z-.020,y+.003,.010,.012)+ga(z+.020,y+.003,.010,.012));
+    const hollow=-.0018*(ga(z-.023,y+.020,.011,.009)+ga(z+.023,y+.020,.011,.009));
+    const bridge=.0055*ga(z,y-.002,.0055,.017),tip=.0085*ga(z,y+.006,.006,.0065);
+    const alae=.0023*(ga(z-.006,y+.009,.0035,.004)+ga(z+.006,y+.009,.0035,.004));
+    const brow=.0023*(ga(z-.014,y-.017,.010,.006)+ga(z+.014,y-.017,.010,.006));
+    const lips=.0017*ga(z,y+.021,.0105,.004),underLip=-.0011*ga(z,y+.027,.012,.004);
+    const nasolabial=-.0007*(ga(z-.012,y+.016,.0035,.010)+ga(z+.012,y+.016,.0035,.010));
+    const asym=.00035*Math.sin(th)*Math.exp(-Math.pow((y+.01)/.026,2));
+    return [headC[0]-front-fm*(eyes+cheeks+hollow+bridge+tip+alae+brow+lips+underLip+nasolabial),headC[1]+y,z+asym];
+  };
+  sculpt.color=(q,u,v)=>{
+    const y=q[1]-headC[1],th=TAU*v,front=sm(Math.cos(th)*3),z=q[2];
+    const blush=.13*Math.exp(-Math.pow((Math.abs(z)-.022)/.010,2)-Math.pow((y+.008)/.015,2))*front;
+    const beard=front*(1-sm((y+.011)/.009))*sm((y+.042)/.008)*.16;
+    const sockets=.20*Math.exp(-Math.pow((Math.abs(z)-.0135)/.008,2)-Math.pow((y-.008)/.007,2))*front;
+    const crease=.10*Math.exp(-Math.pow(z/.012,2)-Math.pow((y+.025)/.005,2))*front;
+    const c=SKIN.color;return [c[0]*(1+blush-beard-sockets-crease),c[1]*(1-.28*blush-.6*beard-sockets-crease),c[2]*(1-.18*blush-.35*beard-sockets-crease)];
+  };
+  surface(sculpt,detail>.15?48:24,detail>.15?64:32,SKIN,()=>headC);
+  for(const sd of [-1,1]){
+    const ear=[headC[0]+.001,headC[1]-.002,.0315*sd];
+    ellipsoid(ear,[.006,.011,.0045],SKIN,headAxes);
+    ellipsoid([ear[0]-.001,ear[1]+.001,ear[2]+.0035*sd],[.0032,.0065,.0009],EAR,headAxes);
+    ellipsoid([ear[0]-.004,ear[1]-.002,ear[2]+.002*sd],[.0025,.004,.002],SKIN,headAxes);
+  }
+  // Hair grows from the same scalp surface, with a natural temple/nape boundary.
+  const hair=(u,v)=>{
+    const th=TAU*v,fringe=sm(Math.cos(th)*3);
+    const bottom=lerp(.027,-.023,(1-Math.cos(th))/2)-.004*Math.exp(-Math.pow((Math.abs(Math.sin(th))-.95)/.16,2))-.003*fringe*(.5+.5*Math.sin(th))+.0012*Math.sin(th*5)*fringe;
+    const y=lerp(bottom,.048,u),f=(y+.043)/.091;
+    // invert the monotonic profile height for the shared scalp
+    let low=0,high=1;for(let j=0;j<24;j++){const mid=(low+high)/2;if(cat(headRows,mid,0)<y)low=mid;else high=mid;}
+    const q=sculpt((low+high)/2,v),clump=.0008*Math.sin(th*9+u*4)*Math.sin(Math.PI*u);
+    const r=.0018+.0022*Math.sin(Math.PI*u)+clump+.0015*fringe*Math.exp(-Math.pow((u-.55)/.3,2));
+    return [q[0]-r*Math.cos(th),q[1]+.0025*sm(u),q[2]+r*Math.sin(th)];
+  };
+  hair.color=(q,u,v)=>{const c=HAIR.color,g=1+.06*Math.sin(TAU*v*7+u*4);return c.map(x=>x*g);};
+  surface(hair,detail>.15?30:12,detail>.15?64:24,HAIR,()=>headC);
+  if(detail>.15){
+    const facePoint=(y,z,advance=0)=>{
+      let lo=0,hi=1;for(let j=0;j<20;j++){const m=(lo+hi)/2;if(cat(headRows,m,0)<y)lo=m;else hi=m;}
+      const u=(lo+hi)/2,w=cat(headRows,u,1),v=Math.asin(Math.max(-.99,Math.min(.99,z/w)))/TAU;
+      const q=sculpt(u,v);q[0]-=advance;return q;
+    };
+    for(const sd of [-1,1]){
+      // Small inset eyes; lids cover the eyeball to avoid a staring doll face.
+      const eye=facePoint(.008,.0135*sd,.0009);
+      ellipsoid(eye,[.0010,.00165,.0046],EYE,headAxes);
+      ellipsoid([eye[0]-.0010,eye[1]-.0002,eye[2]],[.00035,.0011,.0012],IRIS,headAxes);
+      for(const upper of [true,false])curveTube(u=>{
+        const z=.0135*sd+(.0045*(2*u-1)),y=.008+.0004*(2*u-1)*sd+(upper?.0018:-.0012)*Math.sin(Math.PI*u);
+        return facePoint(y,z,.0018);
+      },upper?.0008:.0006,mat(SKIN.color,upper?7:8),16);
+      curveTube(u=>facePoint(.015+.0014*Math.sin(Math.PI*u)+.0007*(2*u-1)*sd,sd*.0135+.006*(2*u-1),.0005),.00075,HAIR,16);
+      ellipsoid(facePoint(-.010,.0045*sd,.0007),[.0004,.00065,.0010],NOSTRIL,headAxes);
+    }
+    for(const upper of [true,false])curveTube(u=>{
+      const z=.011*(2*u-1),y=-.021+(upper?.0009:-.0010)*Math.sin(Math.PI*u);
+      return facePoint(y,z,.0008);
+    },upper?.0008:.0009,LIP,18);
+    curveTube(u=>facePoint(-.021,.0105*(2*u-1),.0014),.00024,MOUTH,18);
+  }
+    const figureTris=tris.splice(first);
+    boat.figureMesh={key:figureKey,packets:[boatMeshPacket(figureTris.slice(0,headAt),2,P),boatMeshPacket(figureTris.slice(headAt),3,P)]};
+  }
+  fastNormals=true;
+  for(const sd of [1,-1]){
+    const O=[xs-.13,sh(xs-.13)+.03,.2*sd];
+    const Hd=[O[0]+.28*Math.sin(psi),O[1]-(bladeY-O[1])/2.3,O[2]-.28*Math.cos(psi)*sd];
+    let Bl=V3.add(O,V3.mul(V3.sub(O,Hd),2.3));Bl[1]=bladeY;
+    // Keep the working blade in the water while the hull and handle ride the wave.
+    if(drv&&(boat.lift||boat.pitch||boat.roll)){
+      const world=W(Bl),age=$('auto').checked?globalT()-T_TOUCH:meetT;
+      world[1]=bladeY*L+contactWaterHeight(world[0],world[2],age);
+      const neutral=boatFloatPoint(world,true),dx=neutral[0]-P[0],dz=neutral[2]-P[1];
+      Bl=[(hx*dx+hz*dz)/L,neutral[1]/L,(-hz*dx+hx*dz)/L];
+    }
+    tube(Hd,Bl,.0065,.005,OAR);
+    const bd=V3.nrm(V3.sub(Bl,O)),bs=V3.nrm(V3.crs(bd,[0,1,0])),up=V3.nrm(V3.crs(bs,bd));
+    const feather=drv?0:Math.PI*.43*Math.sin(Math.PI*e);
+    const wide=V3.add(V3.mul(bs,Math.cos(feather)),V3.mul(up,Math.sin(feather))),thin=V3.nrm(V3.crs(bd,wide));
+    surface((u,v)=>{const c=V3.sub(Bl,V3.mul(bd,.13*(1-u))),th=TAU*v,w=.034*Math.pow(Math.max(0,Math.sin(Math.PI*u)),.65);
+      return V3.add(c,V3.add(V3.mul(wide,w*Math.cos(th)),V3.mul(thin,.0025*Math.sin(Math.PI*u)*Math.sin(th))));
+    },detail>.15?12:6,detail>.15?10:6,OAR,u=>V3.sub(Bl,V3.mul(bd,.13*(1-u))));
+    ellipsoid(O,[.013,.011,.012],METAL);
+    const S=V3.add(Sh,[0,0,.050*sd]),dd=V3.sub(Hd,S),dl=V3.len(dd),axis=V3.nrm(dd),mid=V3.add(S,V3.mul(dd,.5));
+    const pref=[.14,-1,.55*sd],bend=V3.nrm(V3.sub(pref,V3.mul(axis,V3.dot(pref,axis))));
+    const El=V3.add(mid,V3.mul(bend,Math.sqrt(Math.max(.000015,.112*.112-dl*dl/4))));
+    const wrist=V3.add(Hd,V3.mul(V3.nrm(V3.sub(El,Hd)),.016));
+    // A continuous sleeve rounds the elbow instead of exposing separate cylinder joints.
+    const armPath=u=>{
+      const f=u*2,j=f<1?0:1,k=f-j,points=[S,El,wrist];
+      const a=points[Math.max(0,j-1)],b_=points[j],c=points[j+1],d_=points[Math.min(2,j+2)];
+      return [0,1,2].map(q=>.5*(2*b_[q]+(-a[q]+c[q])*k+(2*a[q]-5*b_[q]+4*c[q]-d_[q])*k*k+(-a[q]+3*b_[q]-3*c[q]+d_[q])*k*k*k));
+    };
+    // Shirt sleeves follow the shoulder and elbow. Rolled cuffs expose the forearm.
+    const armSurface=(u,v)=>{
+      const c=armPath(u),axis=V3.nrm(V3.sub(armPath(u+.0001),armPath(u-.0001)));
+      let across=V3.nrm(V3.crs(axis,[0,1,0]));if(V3.len(across)<.001)across=[0,0,1];
+      const around=V3.crs(axis,across),th=TAU*v;
+      const r=(lerp(.023,.011,u)+.003*Math.exp(-Math.pow((u-.32)/.24,2)))*sm(u/.09);
+      const bendAmount=clamp01((.20-dl)/.12);
+      const wrinkle=(.00065+.0010*bendAmount)*Math.sin(u*48+th*2)*Math.exp(-Math.pow((u-.48)/.14,2))+.00065*Math.sin(u*62-th*4)*Math.exp(-Math.pow((u-.68)/.07,2));
+      return V3.add(c,V3.add(V3.mul(across,(r+wrinkle)*Math.cos(th)),V3.mul(around,(r*.92+wrinkle)*Math.sin(th))));
+    };
+    surface((u,v)=>armSurface(u*.73,v),detail>.15?18:10,radial,CLOTH,u=>armPath(u*.73));
+    const cuff=u=>armPath(.70+.05*u);
+    surface((u,v)=>{
+      const c=cuff(u),axis=V3.nrm(V3.sub(cuff(u+.001),cuff(u-.001))),across=V3.nrm(V3.crs(axis,[0,0,1])),around=V3.crs(axis,across),th=TAU*v,r=.016+.0015*Math.sin(Math.PI*u);
+      return V3.add(c,V3.add(V3.mul(across,r*Math.cos(th)),V3.mul(around,r*Math.sin(th))));
+    },4,radial,SEAM,cuff);
+    const bare=u=>armPath(.715+.285*u);
+    surface((u,v)=>{
+      const c=bare(u),axis=V3.nrm(V3.sub(bare(u+.001),bare(u-.001))),across=V3.nrm(V3.crs(axis,[0,0,1])),around=V3.crs(axis,across),th=TAU*v;
+      const r=lerp(.014,.009,u)+.0012*Math.sin(Math.PI*u);
+      return V3.add(c,V3.add(V3.mul(across,r*Math.cos(th)),V3.mul(around,r*.82*Math.sin(th))));
+    },detail>.15?10:5,radial,SKIN,bare);
+    // The palms and four curled fingers wrap the shaft, rather than becoming mitten blobs.
+    const palm=V3.add(Hd,V3.add(V3.mul(bd,-.006),V3.mul(up,.008)));
+    ellipsoid(palm,[.016,.0055,.010],SKIN,[bd,up,bs]);
+    if(detail>.15){
+      const savedRadial=radial,savedRounds=rounds;radial=8;rounds=5;
+      for(let finger=0;finger<4;finger++){
+        const along=-.012+finger*.0065,base=V3.add(Hd,V3.mul(bd,along)),radius=.0078;
+        const fingerPath=u=>{
+          const a=-.28+u*3.7;
+          return V3.add(base,V3.add(V3.mul(up,radius*Math.cos(a)),V3.mul(bs,radius*Math.sin(a))));
+        };
+        curveTube(fingerPath,finger===3?.0019:.0023,SKIN,8);
+      }
+      const thumbA=V3.add(palm,V3.add(V3.mul(bd,.011),V3.mul(bs,-.007))),thumbB=V3.add(Hd,V3.add(V3.mul(bd,.018),V3.mul(bs,-.008))),thumbC=V3.add(Hd,V3.add(V3.mul(bd,.010),V3.mul(up,-.005)));
+      curveTube(u=>V3.add(V3.add(V3.mul(thumbA,(1-u)*(1-u)),V3.mul(thumbB,2*u*(1-u))),V3.mul(thumbC,u*u)),.0031,SKIN,10);
+      radial=savedRadial;rounds=savedRounds;
+    }else ellipsoid(V3.add(Hd,V3.mul(up,-.004)),[.015,.007,.010],SKIN,[bd,up,bs]);
+    const hip=[Hp[0],Hp[1],.046*sd],K=[xs-.15,.158,.059*sd],F=[xs-.27,.041,.063*sd];
+    const legPath=u=>{
+      const f=u*2,j=f<1?0:1,k=f-j,points=[hip,K,F];
+      const a=points[Math.max(0,j-1)],b_=points[j],c=points[j+1],d_=points[Math.min(2,j+2)];
+      return [0,1,2].map(q=>.5*(2*b_[q]+(-a[q]+c[q])*k+(2*a[q]-5*b_[q]+4*c[q]-d_[q])*k*k+(-a[q]+3*b_[q]-3*c[q]+d_[q])*k*k*k));
+    };
+    surface((u,v)=>{
+      const c=legPath(u),axis=V3.nrm(V3.sub(legPath(u+.0001),legPath(u-.0001))),a=V3.nrm(V3.crs(axis,[0,0,1])),b_=V3.crs(axis,a),th=TAU*v;
+      const r=lerp(.035,.017,u)+.002*Math.sin(Math.PI*u);
+      return V3.add(c,V3.add(V3.mul(a,r*Math.cos(th)),V3.mul(b_,r*.9*Math.sin(th))));
+    },detail>.15?10:6,radial,PANTS,legPath);
+    ellipsoid([F[0]-.018,.038,F[2]],[.040,.020,.024],SHOE);
+  }
+  // Surface visibility is resolved in the boat tile with its own depth buffer.
+  const size=tris.length*30;
+  if(!boat.storage||boat.storage.length<size)boat.storage=new Float32Array(size);
+  const d=boat.storage.subarray(0,size);let o=0;
+  const lo=[Infinity,Infinity,Infinity],hi=[-Infinity,-Infinity,-Infinity];
+  for(const T of tris)for(let v=0;v<3;v++){const q=T[v];d.set(q,o);d.set(T[5]?T[5][v]:T[3],o+3);d.set(T[6]?T[6][v]:T[4],o+6);d[o+9]=T[7]||0;o+=10;
+    for(let k=0;k<3;k++){lo[k]=Math.min(lo[k],q[k]);hi[k]=Math.max(hi[k],q[k]);}}
+  boat.packets=[boat.hullMesh.packet,...boat.figureMesh.packets];
+  for(const mesh of boat.packets)for(let i=0;i<8;i++){
+    const q=boatMeshPoint([mesh.bounds[i&1][0],mesh.bounds[(i>>1)&1][1],mesh.bounds[(i>>2)&1][2]],mesh);
+    for(let k=0;k<3;k++){lo[k]=Math.min(lo[k],q[k]);hi[k]=Math.max(hi[k],q[k]);}}
+  boat.bounds=[lo,hi];boat.data=d;boat.dynamicN=tris.length*3;boat.n=boat.dynamicN+boat.packets.reduce((n,p)=>n+p.n,0);boat.uploadDirty=true;}
+/* the boat is tiny on screen, so it is drawn into its own tile at four times the resolution and filtered down:
+   clean edges instead of the speckle of sub-pixel triangles */
+function boatDetail(){
+  const [x,z]=boat.pos,[hx,hz]=boat.h,L=boat.L;
+  const a=projCPU(x-0.5*hx*L,0,z-0.5*hz*L),b=projCPU(x+0.5*hx*L,0,z+0.5*hz*L);
+  return sm((Math.hypot(b[0]-a[0],b[1]-a[1])/dpr-36)/48);
+}
+function boatTarget(w,h){
+  const tile=target(w,h);tile.depth=gl.createRenderbuffer();gl.bindRenderbuffer(gl.RENDERBUFFER,tile.depth);
+  gl.renderbufferStorage(gl.RENDERBUFFER,gl.DEPTH_COMPONENT24,w,h);
+  gl.framebufferRenderbuffer(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.RENDERBUFFER,tile.depth);return tile;
+}
+const BOAT_SS=4;let boatTile=boatTarget(512,512),boatTileW=512,boatTileH=512;
+const TILE_FS=`#version 300 es
+precision highp float;in vec2 vU;uniform sampler2D uT;uniform vec4 uBox;uniform vec2 uRes,uTex;uniform float uTH,uSS;out vec4 o;
+void main(){vec2 sp=vec2(gl_FragCoord.x,uRes.y-gl_FragCoord.y),f=(sp-uBox.xy)/uBox.zw;
+  if(f.x<0.||f.y<0.||f.x>1.||f.y>1.)discard;
+  vec4 c=vec4(0.);
+  float n=0.;
+  for(int y=0;y<${BOAT_SS};y++)for(int x=0;x<${BOAT_SS};x++){if(float(x)>=uSS||float(y)>=uSS)continue;
+    vec2 tp=f*uBox.zw*uSS+vec2(float(x),float(y))-(uSS-1.)*0.5;c+=texture(uT,vec2(tp.x,uTH-tp.y)/uTex);n+=1.;}
+  c/=n;if(c.a<0.004)discard;o=vec4(c.rgb/c.a,c.a);}`;
+const P_TILE=program(FS_VS,TILE_FS);
+function drawBoat(refl){
+  if(!boat.n)return;
+  // the boat's screen box
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;const d=boat.data;
+  for(let i=0;i<8;i++){const p=boatFloatPoint([boat.bounds[i&1][0],boat.bounds[(i>>1)&1][1],boat.bounds[(i>>2)&1][2]]);if(refl)p[1]=2*floorY-p[1];const q=projCPU(p[0],p[1],p[2]);x0=Math.min(x0,q[0]);x1=Math.max(x1,q[0]);y0=Math.min(y0,q[1]);y1=Math.max(y1,q[1]);}
+  x0=Math.floor(x0-3);y0=Math.floor(y0-3);x1=Math.ceil(x1+3);y1=Math.ceil(y1+3);
+  if(x1<0||y1<0||x0>CW||y0>CH)return;
+  // Render the visible portion even when a close-up extends beyond the screen.
+  x0=Math.max(0,x0);y0=Math.max(0,y0);x1=Math.min(CW,x1);y1=Math.min(CH,y1);
+  const bw=x1-x0,bh=y1-y0;if(bw<=0||bh<=0)return;
+  const ss=Math.max(1,Math.min(BOAT_SS,Math.floor(512/Math.max(bw,bh))));
+  const tw=bw*ss,th=bh*ss;
+  if(tw>boatTileW||th>boatTileH){
+    boatTileW=Math.max(boatTileW,2**Math.ceil(Math.log2(tw)));boatTileH=Math.max(boatTileH,2**Math.ceil(Math.log2(th)));
+    gl.deleteRenderbuffer(boatTile.depth);freeT(boatTile);boatTile=boatTarget(boatTileW,boatTileH);
+  }
+  // render into the tile
+  const keepFB=refl?reflT.f:scene.f;
+  gl.bindFramebuffer(gl.FRAMEBUFFER,boatTile.f);gl.viewport(0,0,tw,th);gl.clearColor(0,0,0,0);gl.clearDepth(1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+  gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LESS);
+  gl.useProgram(P_BOAT.p);setProj(P_BOAT,1,refl);gl.uniform2f(P_BOAT.u.uRes,bw,bh);gl.uniform2f(P_BOAT.u.uCtr,CW*ctrX-x0,CH*ctrY-y0);
+  gl.bindVertexArray(VAO_BOAT);
+  const E=[Rm[6]*camF*sceneFit,Rm[7]*camF*sceneFit,Rm[8]*camF*sceneFit];
+  gl.uniform3f(P_BOAT.u.uLP,0,0.45*RT,0);gl.uniform3f(P_BOAT.u.uEye,E[0],E[1],E[2]);
+  gl.uniform1f(P_BOAT.u.uDetail,boatDetail());
+  gl.uniform3f(P_BOAT.u.uBoatOrigin,boat.pos[0],0,boat.pos[1]);gl.uniformMatrix3fv(P_BOAT.u.uRock,false,boat.rotation||[1,0,0,0,1,0,0,0,1]);gl.uniform1f(P_BOAT.u.uLift,boat.lift||0);gl.uniform1f(P_BOAT.u.uBoatSize,boat.L);
+  bindBoatBuffer(boatBuf);
+  if(boat.uploadDirty){
+    if(boat.gpuBytes!==boat.data.byteLength){gl.bufferData(gl.ARRAY_BUFFER,boat.data,gl.DYNAMIC_DRAW);boat.gpuBytes=boat.data.byteLength;}
+    else gl.bufferSubData(gl.ARRAY_BUFFER,0,boat.data);
+    boat.uploadDirty=false;
+  }
+  gl.uniform2f(P_BOAT.u.uHeading,boat.h[0],boat.h[1]);gl.uniform1f(P_BOAT.u.uLean,boat.lean);gl.uniform1f(P_BOAT.u.uHeadAngle,boat.headAngle);gl.uniform1f(P_BOAT.u.uHeadYaw,boat.headYaw);gl.uniform1f(P_BOAT.u.uBlink,boat.blink);
+  gl.disable(gl.BLEND);gl.uniform1i(P_BOAT.u.uMeshRig,0);gl.drawArrays(gl.TRIANGLES,0,boat.dynamicN);
+  for(const mesh of boat.packets){bindBoatBuffer(mesh.buffer);gl.uniform1i(P_BOAT.u.uMeshRig,mesh.rig);gl.uniform3f(P_BOAT.u.uMeshOrigin,mesh.pos[0],0,mesh.pos[1]);gl.drawArrays(gl.TRIANGLES,0,mesh.n);}
+  gl.disable(gl.DEPTH_TEST);
+  // composite, filtered, over the water
+  gl.bindFramebuffer(gl.FRAMEBUFFER,keepFB);gl.viewport(0,0,CW,CH);gl.useProgram(P_TILE.p);gl.bindVertexArray(VAO_EMPTY);
+  gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,boatTile.t);gl.uniform1i(P_TILE.u.uT,0);
+  gl.uniform4f(P_TILE.u.uBox,x0,y0,bw,bh);gl.uniform2f(P_TILE.u.uRes,CW,CH);gl.uniform2f(P_TILE.u.uTex,boatTileW,boatTileH);gl.uniform1f(P_TILE.u.uTH,th);gl.uniform1f(P_TILE.u.uSS,ss);
+  gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.drawArrays(gl.TRIANGLES,0,3);
+  gl.blendFunc(gl.ONE,gl.ONE);}
+
+/* =====================================================================
+   Glow points: the seed, growth buds, the flash at every division, the finished tips
+   ===================================================================== */
+let ptData=new Float32Array(7000),ptN=0,seedA=0;
+function addPt(x,y,z,type,r,a){if(ptN*7+7>ptData.length){const n=new Float32Array(ptData.length*2);n.set(ptData);ptData=n;}
+  const o=ptN*7;ptData[o]=x;ptData[o+1]=y;ptData[o+2]=z;ptData[o+3]=type;ptData[o+4]=r;ptData[o+5]=a;ptData[o+6]=0;ptN++;}
+const addPt2=addPt;     // one half only: the water's reflection gives the other
+function buildPoints(){ptN=0;
+  if(seedA>0.01)addPt(0,0,0,1,2.8*dpr,seedA);
+  gl.bindBuffer(gl.ARRAY_BUFFER,ptBuf);gl.bufferData(gl.ARRAY_BUFFER,ptData.subarray(0,ptN*7),gl.DYNAMIC_DRAW);
+}
+
+/* =====================================================================
+   Rendering
+   ===================================================================== */
+let camF=5,ctrX=0.5,ctrY=0.5,floorY=-1;
+function setProj(Pg,sg,refl){const U_=Pg.u;
+  gl.uniformMatrix3fv(U_.uR,false,[Rm[0],Rm[3],Rm[6],Rm[1],Rm[4],Rm[7],Rm[2],Rm[5],Rm[8]]);
+  gl.uniform1f(U_.uSg,sg);gl.uniform1f(U_.uS,Scam);gl.uniform1f(U_.uPF,sceneFit);gl.uniform1f(U_.uF,camF);
+  gl.uniform1f(U_.uRefl,refl?1:0);gl.uniform1f(U_.uFloor,floorY);gl.uniform1f(U_.uTime,clock);
+  gl.uniform2f(U_.uRes,CW,CH);gl.uniform2f(U_.uCtr,CW*ctrX,CH*ctrY);}
+function lensUniforms(Pg){gl.uniform1f(Pg.u.uDpr,dpr);}
+function render(clock){
+  const reflOn=true;     // the reflection is the second half
+  gl.bindFramebuffer(gl.FRAMEBUFFER,scene.f);gl.viewport(0,0,CW,CH);
+  gl.clearColor(0,0,0,1);gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.enable(gl.BLEND);gl.blendFunc(gl.ONE,gl.ONE);
+  // branches (upper tree, its mirror, then both again as a reflection in the water below)
+  const L=P_LINE,U_=L.u;gl.useProgram(L.p);lensUniforms(L);
+  gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,posTex);gl.uniform1i(U_.uPos,0);
+  gl.uniform1i(U_.uLook,+$('lighting').value);
+  gl.uniform1f(U_.uG,G);gl.uniform1f(U_.uT,t);gl.uniform1f(U_.uM,M);gl.uniform1f(U_.uD,D);
+  gl.uniform1i(U_.uDI,D);gl.uniform1i(U_.uDmI,Dm);gl.uniform1i(U_.uNGI,NG);
+  gl.uniform1iv(U_['uOff[0]'],flowOff);gl.uniform1iv(U_['uNk[0]'],flowNk);gl.uniform1iv(U_['uPs[0]'],flowPs);gl.uniform1iv(U_['uOrd[0]'],ordI);
+  gl.uniform1f(U_.uW0,Math.max(2.2*dpr,Math.min(CW,CH)*0.0085)*Math.sqrt(scale*zoomF));
+  gl.uniform1f(U_.uTwig,1-sm((t-0.32)/0.3));gl.uniform1f(U_.uFold,sm(t/0.55));gl.uniform1f(U_.uDm,Dm);         // fine twigs fade only once they lie on their strand
+  // One subtle wave travels outward during the final approach. It arrives at the tips
+  // exactly when they touch the water; the rings then draw sideways with their original timing.
+  const Rh=Math.max(2,Math.round(+$('rings').value/2)),ringN=2*Rh*NG,shoot=meetT>=0?sm(meetT/0.18):0;
+  const pulseGain=1/3;
+  const trA=meetT>-4.6&&meetT<0.3?pulseGain*(meetT<0?sm((meetT+4.6)/0.4):1-sm(meetT/0.3)):0;
+  gl.uniform1f(U_.uRing,0.85);gl.uniform1f(U_.uShoot,shoot);gl.uniform1f(U_.uLat,0.);   // the rings stay unseen until the moment the ends meet
+  gl.uniform1f(U_.uTrS,M/4*Math.min(meetT,0));gl.uniform1f(U_.uTrA,trA);gl.uniform1f(U_.uTrk,pStart[1]);gl.uniform1i(U_.uRh,Rh);
+  gl.uniform1f(U_.uDens,lerp(1,Math.min(1,Math.sqrt(40/NG)),t));
+  const tipA=G>=M?0.05*clamp01(1-t/0.25)*Math.min(1,Math.pow(2,11-D)):0;
+  const headA=meetT>-4.2&&meetT<0.45?0.16*pulseGain*(1-sm(Math.max(0,meetT)/0.45)):0;
+  for(const refl of reflOn?[0,1]:[0]){
+    if(refl){gl.bindFramebuffer(gl.FRAMEBUFFER,reflT.f);gl.viewport(0,0,CW,CH);gl.clear(gl.COLOR_BUFFER_BIT);}
+    gl.useProgram(L.p);gl.bindVertexArray(VAO_BR);gl.uniform1i(U_.uMode,0);
+    const parts=t>0.025&&t<0.999?3:1;
+    gl.uniform1i(U_.uParts,parts);gl.vertexAttribDivisor(3,parts);
+    setProj(L,1,refl);gl.drawArraysInstanced(gl.TRIANGLE_STRIP,0,4,nInst*parts);
+    {gl.bindVertexArray(VAO_RG);gl.uniform1i(U_.uMode,1);   // the equator is drawn once
+      setProj(L,1,refl);gl.drawArraysInstanced(gl.TRIANGLE_STRIP,0,4,ringN);}
+    if(ptN){gl.useProgram(P_PT.p);lensUniforms(P_PT);setProj(P_PT,1,refl);gl.bindVertexArray(VAO_PT);gl.drawArrays(gl.POINTS,0,ptN);}
+    if(G<M){const g_=P_GROW,u=g_.u;gl.useProgram(g_.p);gl.uniform1i(u.uPos,0);gl.uniform1i(u.uDmI,Dm);gl.bindVertexArray(VAO_EMPTY);setProj(g_,1,refl);
+      const draw=(mode,k,q,fr,rad,a)=>{gl.uniform1i(u.uMode,mode);gl.uniform1i(u.uK,k);gl.uniform1i(u.uNk,nSeg[k]);gl.uniform1i(u.uOff0,flowOff[k]);
+        gl.uniform1i(u.uQ,q);gl.uniform1f(u.uFr,fr);gl.uniform1f(u.uRad,rad);gl.uniform1f(u.uA,a);gl.drawArrays(gl.POINTS,0,1<<k);};
+      for(let k=1;k<=D;k++){const uu=(G-pStart[k])/3;if(uu<0||uu>=1)continue;           // each division flashes
+        draw(1,k-1,0,0,(1.5+10*uu)*dpr,0.28*(1-uu)*Math.min(1,Math.pow(2,8-k)));}
+      if(G>0.02){const x=Math.min(M-1e-3,G),k=lev[x|0],qf=x-pStart[k],q0=Math.floor(qf);  // and the growing tips glow
+        draw(0,k,q0,qf-q0,1.0*dpr,0.22*Math.min(1,Math.pow(2,8-k)));}}
+    if(headA>0.002){const H_=P_HEAD,u=H_.u;gl.useProgram(H_.p);gl.uniform1i(u.uPos,0);
+      gl.uniform1i(u.uDI,D);gl.uniform1i(u.uDmI,Dm);gl.uniform1i(u.uRh,Rh);gl.uniform1i(u.uNGI,NG);
+      gl.uniform1iv(u['uOff[0]'],flowOff);gl.uniform1iv(u['uNk[0]'],flowNk);gl.uniform1iv(u['uPs[0]'],flowPs);gl.uniform1iv(u['uOrd[0]'],ordI);
+      gl.uniform1f(u.uM,M);gl.uniform1f(u.uT,t);gl.uniform1f(u.uTrS,M/4*Math.min(meetT,0));gl.uniform1f(u.uHA,headA);gl.uniform1f(u.uDpr,dpr);gl.uniform1f(u.uTrk,pStart[1]);
+      gl.bindVertexArray(VAO_EMPTY);setProj(H_,1,refl);gl.drawArrays(gl.POINTS,0,ringN);}
+    if(tipA>0.002){const T_=P_TIP;gl.useProgram(T_.p);gl.uniform1i(T_.u.uPos,0);gl.uniform1i(T_.u.uBase,flowOff[D]);gl.uniform1i(T_.u.uNkD,nSeg[D]);
+      gl.uniform1f(T_.u.uDpr,dpr);gl.uniform1f(T_.u.uA,tipA);gl.bindVertexArray(VAO_EMPTY);
+      setProj(T_,1,refl);gl.drawArrays(gl.POINTS,0,Sk[D]);}
+    drawFlow(refl);
+    if(refl)drawBoat(1);
+    {const S_=P_STAR,u=S_.u;gl.useProgram(S_.p);gl.bindVertexArray(VAO_EMPTY);
+      gl.uniformMatrix3fv(u.uR,false,[Rm[0],Rm[3],Rm[6],Rm[1],Rm[4],Rm[7],Rm[2],Rm[5],Rm[8]]);
+      gl.uniform1f(u.uS,Scam);gl.uniform1f(u.uF,camF);gl.uniform1f(u.uPF,sceneFit);gl.uniform1f(u.uRefl,refl?1:0);
+      gl.uniform1f(u.uDpr,dpr);gl.uniform1f(u.uTime,clock);gl.uniform2f(u.uRes,CW,CH);gl.uniform2f(u.uCtr,CW*ctrX,CH*ctrY);
+      gl.drawArrays(gl.POINTS,0,NSTAR);}
+  }
+  if(reflOn){gl.bindFramebuffer(gl.FRAMEBUFFER,scene.f);gl.viewport(0,0,CW,CH);gl.blendFunc(gl.ONE,gl.ONE);drawWater();}
+  drawBoat(0);
+  gl.bindVertexArray(VAO_EMPTY);gl.activeTexture(gl.TEXTURE0);
+  // bloom: downsample chain, then upsample back with additive accumulation
+  gl.disable(gl.BLEND);gl.useProgram(P_DOWN.p);gl.uniform1i(P_DOWN.u.uT,0);
+  let src=scene;
+  for(const dst of chain){gl.bindFramebuffer(gl.FRAMEBUFFER,dst.f);gl.viewport(0,0,dst.w,dst.h);
+    gl.bindTexture(gl.TEXTURE_2D,src.t);gl.uniform2f(P_DOWN.u.uH,1/src.w,1/src.h);gl.drawArrays(gl.TRIANGLES,0,3);src=dst;}
+  gl.useProgram(P_UP.p);gl.uniform1i(P_UP.u.uT,0);gl.enable(gl.BLEND);gl.blendFunc(gl.ONE,gl.ONE);
+  for(let i=chain.length-2;i>=0;i--){const s_=chain[i+1],d_=chain[i];gl.bindFramebuffer(gl.FRAMEBUFFER,d_.f);gl.viewport(0,0,d_.w,d_.h);
+    gl.bindTexture(gl.TEXTURE_2D,s_.t);gl.uniform2f(P_UP.u.uH,0.5/s_.w,0.5/s_.h);gl.drawArrays(gl.TRIANGLES,0,3);}
+  gl.disable(gl.BLEND);
+  // light shafts radiating from the throat
+  gl.bindFramebuffer(gl.FRAMEBUFFER,shaft.f);gl.viewport(0,0,shaft.w,shaft.h);gl.useProgram(P_SHAFT.p);
+  gl.bindTexture(gl.TEXTURE_2D,chain[0].t);gl.uniform1i(P_SHAFT.u.uT,0);gl.uniform2f(P_SHAFT.u.uL,ctrX,1-ctrY);
+  gl.drawArrays(gl.TRIANGLES,0,3);
+  // final composite
+  gl.bindFramebuffer(gl.FRAMEBUFFER,null);gl.viewport(0,0,CW,CH);gl.useProgram(P_COMP.p);
+  gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,scene.t);gl.uniform1i(P_COMP.u.uS,0);
+  gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,chain[0].t);gl.uniform1i(P_COMP.u.uB,1);
+  gl.activeTexture(gl.TEXTURE2);gl.bindTexture(gl.TEXTURE_2D,shaft.t);gl.uniform1i(P_COMP.u.uSh,2);
+  const study=+$('lighting').value>0?sm((t-0.55)/0.43):0;
+  gl.uniform1f(P_COMP.u.uBS,lerp(0.16,0.14,study)*(+$('glow').value));gl.uniform1f(P_COMP.u.uEx,lerp(1.35,1.32,study));
+  gl.uniform1f(P_COMP.u.uShS,lerp(0.3,0.23,study)*(+$('shafts').value));gl.uniform1f(P_COMP.u.uFilm,+$('film').value);gl.uniform1f(P_COMP.u.uTime,clock);
+  gl.drawArrays(gl.TRIANGLES,0,3);gl.activeTexture(gl.TEXTURE0);
+}
+
+/* =====================================================================
+   Timeline: every motion runs at one constant speed, with only a brief gentle start and stop.
+   ===================================================================== */
+function prof(f,r){f=clamp01(f);const vv=1/(1-r);return f<r?0.5*vv*f*f/r:f>1-r?1-0.5*vv*(1-f)*(1-f)/r:vv*(f-r/2);}
+// the canopy starts to sag under its own weight while it is still growing, and the sag deepens into the fall to the water:
+// no pause anywhere, the bend easing in as gently as it eases out
+const VOID=0.9,T_BEND=9.3,T_TOUCH=22.5,phases=[['I · Genesis',12],['II · Bloom',T_TOUCH-12],['III · Torus',Infinity]];
+const globalT=()=>ph===0?pt:ph===1?12+pt:T_TOUCH+pt;
+let ph=0,pt=0,G=0,t=0;
+function updateTimeline(dt){
+  let cap;
+  if($('auto').checked){
+    pt+=dt;while(pt>phases[ph][1]){pt-=phases[ph][1];ph++;}
+    const Tg=globalT();
+    G=M*prof((Tg-VOID)/(12-VOID),0.3);   // growth slows over exactly the stretch in which the sag gathers: an even pace
+    t=Tg<=T_BEND?0:prof((Tg-T_BEND)/(T_TOUCH-T_BEND),0.18);
+    $('morph').value=t;cap=phases[ph][0];
+    if(ph===0){const k=lev[Math.min(M-1,G|0)];cap+=G<0.05?' · Seed':k===0?' · Trunk':' · Generation '+k+' / '+D;}
+    if(ph===2){const P_=(frontS-M)/M;if(P_>0.01)cap+=P_<1.05?' · Return':' · Circulation';}
+  }else{G=M;cap='Manual · '+Math.round(t*100)+'%';}
+  if(rec)cap+=' · ● Rec';
+  $('phase').textContent=cap;
+  $('barfill').style.width=(ph===0&&$('auto').checked?G/M:t)*100+'%';
+  seedA=ph===0&&$('auto').checked?sm((pt-0.15)/0.6)*(1-sm((G-1.5)/8)):0;
+}
+
+/* =====================================================================
+   Sound (optional): a generative tone that follows the structure. Each generation adds a
+   harmonic; while the tree stands the partials are slightly detuned and gently beat against
+   each other; as the torus closes they slide into pure tuning and the root fills in beneath.
+   ===================================================================== */
+const snd={ctx:null,on:false,
+  init(){const A=new (window.AudioContext||window.webkitAudioContext)();this.ctx=A;
+    this.master=A.createGain();this.master.gain.value=0;
+    this.lp=A.createBiquadFilter();this.lp.type='lowpass';this.lp.frequency.value=400;this.lp.Q.value=0.4;
+    const rev=A.createConvolver(),len=A.sampleRate*5.5,buf=A.createBuffer(2,len,A.sampleRate);
+    for(let c=0;c<2;c++){const d=buf.getChannelData(c);for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/len,3);}
+    rev.buffer=buf;const wet=A.createGain(),dry=A.createGain();wet.gain.value=0.55;dry.gain.value=0.7;
+    this.lp.connect(dry);this.lp.connect(rev);rev.connect(wet);dry.connect(this.master);wet.connect(this.master);this.master.connect(A.destination);
+    const base=55,H=[2,3,4,5,6,8,10,12,15,16,18,20,24,30];
+    this.v=H.map((h,i)=>{const o=A.createOscillator();o.type='sine';o.frequency.value=base*h;const g=A.createGain();g.gain.value=0;
+      o.connect(g);g.connect(this.lp);o.start();return {o,g,amp:0.3/Math.pow(1+i,0.75)};});
+    const so=A.createOscillator();so.type='sine';so.frequency.value=base;this.sub=A.createGain();this.sub.gain.value=0;so.connect(this.sub);this.sub.connect(this.lp);so.start();
+    const lfo=A.createOscillator();lfo.frequency.value=0.07;const lg=A.createGain();lg.gain.value=120;lfo.connect(lg);lg.connect(this.lp.frequency);lfo.start();},
+  set(on){if(on&&!this.ctx){try{this.init();}catch(e){return;}}if(!this.ctx)return;this.on=on;if(on)this.ctx.resume();
+    this.master.gain.setTargetAtTime(on?0.22:0,this.ctx.currentTime,0.6);},
+  update(){if(!this.on)return;const T=this.ctx.currentTime;
+    this.v.forEach((v_,k)=>{const live=k<=D&&G>pStart[k]+0.5;v_.g.gain.setTargetAtTime(live?v_.amp:0,T,0.9);
+      v_.o.detune.setTargetAtTime((1-t)*(k%2?1:-1)*(3+k*1.6),T,0.4);});
+    this.sub.gain.setTargetAtTime(0.35*t*t,T,1.2);
+    this.lp.frequency.setTargetAtTime(350+3200*Math.pow(G/M,1.4)+1500*t,T,0.8);}};
+
+/* =====================================================================
+   Export: a 4K still of the current moment, or a video of the whole sequence
+   ===================================================================== */
+function download(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;
+  document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);}
+function exportStill(){
+  const asp=innerWidth/innerHeight,LONG=3840,W=asp>=1?LONG:Math.round(LONG*asp),H=asp>=1?Math.round(LONG/asp):LONG;
+  const keep={w:CW,h:CH,dpr};
+  dpr=keep.dpr*W/keep.w;setSize(W,H);
+  prepare();render(clock);
+  cv.toBlob(b=>{if(b)download(b,'arbor-torus-4k.png');},'image/png');
+  dpr=keep.dpr;setSize(keep.w,keep.h);
+}
+let rec=null,recChunks=[];
+const recMime=window.MediaRecorder?['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm','video/mp4'].find(m=>MediaRecorder.isTypeSupported(m)):null;
+if(!recMime||!cv.captureStream)$('record').disabled=true;
+function startRec(){
+  rec=new MediaRecorder(cv.captureStream(30),{mimeType:recMime,videoBitsPerSecond:20e6});recChunks=[];
+  rec.ondataavailable=e=>{if(e.data&&e.data.size)recChunks.push(e.data);};
+  rec.onstop=()=>{download(new Blob(recChunks,{type:recMime}),'arbor-torus.'+(recMime.includes('mp4')?'mp4':'webm'));rec=null;$('record').textContent='Record';};
+  $('auto').checked=true;ph=0;pt=0;G=0;t=0;boatEpoch=clock;resetBoatFloat();resetFlow();   // record the whole piece from the seed
+  rec.start(500);$('record').textContent='Stop';
+}
+function stopRec(){if(rec&&rec.state!=='inactive')rec.stop();}
+
+/* =====================================================================
+   Interaction and presentation mode
+   ===================================================================== */
+let drag=null,pinch=0,pinchCenter=null,idleT=0;
+function wake(){document.body.classList.remove('idle');clearTimeout(idleT);
+  idleT=setTimeout(()=>{if(!$('panel').matches(':hover'))document.body.classList.add('idle');},3500);}
+['pointermove','pointerdown','wheel','touchstart'].forEach(e=>addEventListener(e,wake,{passive:true}));
+addEventListener('keydown',e=>{if(e.key==='h'||e.key==='H')document.body.classList.toggle('noui');wake();});
+wake();
+cv.addEventListener('contextmenu',e=>e.preventDefault());
+cv.addEventListener('pointerdown',e=>{cv.setPointerCapture(e.pointerId);
+  drag={x:e.clientX,y:e.clientY,mode:e.altKey||e.button===1?'pan':e.shiftKey||e.button===2?'roll':'rot'};});
+cv.addEventListener('pointermove',e=>{if(!drag||pinch)return;
+  const dx=e.clientX-drag.x,dy=e.clientY-drag.y;drag.x=e.clientX;drag.y=e.clientY;
+  if(drag.mode==='rot'){ry+=dx*0.01;rxU+=dy*0.01;}
+  else if(drag.mode==='roll'){rz+=dx*0.01;}
+  else if(drag.mode==='pan'){const r=cv.getBoundingClientRect();viewPanX+=dx/r.width;viewPanY+=dy/r.height;camera(t);}});
+addEventListener('pointerup',()=>drag=null);
+function zoomAt(next,clientX,clientY){
+  camera(t);const r=cv.getBoundingClientRect(),x=(clientX-r.left)/r.width,y=(clientY-r.top)/r.height;
+  const target=Math.max(MIN_SCALE,Math.min(MAX_SCALE,next)),ratio=target/scale;
+  viewPanX+=(x-ctrX)*(1-ratio);viewPanY+=(y-ctrY)*(1-ratio);
+  scale=target;$('scale').value=scale;camera(t);
+}
+cv.addEventListener('wheel',e=>{
+  e.preventDefault();const unit=e.deltaMode===1?16:e.deltaMode===2?cv.clientHeight:1;
+  zoomAt(scale*Math.exp(-e.deltaY*unit*.001),e.clientX,e.clientY);
+},{passive:false});
+const touchPair=touches=>({distance:Math.hypot(touches[0].clientX-touches[1].clientX,touches[0].clientY-touches[1].clientY),
+  x:(touches[0].clientX+touches[1].clientX)/2,y:(touches[0].clientY+touches[1].clientY)/2});
+cv.addEventListener('touchstart',e=>{if(e.touches.length===2){const p=touchPair(e.touches);pinch=p.distance;pinchCenter=p;drag=null;}},{passive:true});
+cv.addEventListener('touchmove',e=>{if(e.touches.length===2){
+  const p=touchPair(e.touches),r=cv.getBoundingClientRect();
+  if(pinch&&pinchCenter){
+    viewPanX+=(p.x-pinchCenter.x)/r.width;viewPanY+=(p.y-pinchCenter.y)/r.height;
+    zoomAt(scale*p.distance/pinch,p.x,p.y);
+  }
+  pinch=p.distance;pinchCenter=p;drag=null;e.preventDefault();
+}},{passive:false});
+const endPinch=()=>{pinch=0;pinchCenter=null;drag=null;};
+cv.addEventListener('touchend',endPinch);cv.addEventListener('touchcancel',endPinch);
+cv.addEventListener('pointercancel',()=>drag=null);
+$('scale').oninput=e=>{const r=cv.getBoundingClientRect();zoomAt(+e.target.value,r.left+r.width/2,r.top+r.height/2);};
+$('morph').oninput=e=>{$('auto').checked=false;t=+e.target.value;G=M;};
+$('auto').onchange=e=>{if(e.target.checked){G=M;ph=1;pt=Math.max(0,T_BEND+(T_TOUCH-T_BEND)*t-12);}};
+['depth','mer','spread','ratio','vari','twist'].forEach(id=>$(id).oninput=buildTree);
+$('sound').onchange=e=>snd.set(e.target.checked);
+$('regrow').onclick=()=>{$('auto').checked=true;ph=0;pt=0;G=0;t=0;boatEpoch=clock;resetBoatFloat();resetFlow();};
+$('lighting').onchange=wake;
+$('reseed').onclick=()=>{seed++;buildTree();};
+$('reset').onclick=()=>{rxU=0;ry=HOME_VIEW.azimuth;rz=0;yaw=0;scale=HOME_VIEW.scale;viewPanX=0;viewPanY=0;$('scale').value=scale;camera(t);};
+$('still').onclick=exportStill;
+$('record').onclick=()=>rec?stopRec():startRec();
+$('tg').onclick=()=>{const Pn=$('panel');Pn.classList.toggle('hide');const open=!Pn.classList.contains('hide');
+  $('tg').textContent=(open?'—':'+')+' Controls';$('tg').setAttribute('aria-expanded',String(open));$('lightingbar').hidden=!open;wake();};
+
+/* =====================================================================
+   Main loop
+   ===================================================================== */
+let preparedShape=null;
+function prepare(){
+  const hf=+$('hole').value;RT=KZ*fitTree/(2+hf);
+  const shapeKey=[treeRevision,t,hf,RT].join(',');
+  if(shapeKey!==preparedShape){
+    if(GPU){const r=repModel(t);modelMaxY=r.ymax+(ymaxAll0-ymaxRep0)*(1-sm(t/0.55));tipGap=2*r.tip;gpuMorph();}
+    else{computeModel(t);tipGap=2*repModel(t).tip;packBranches();}
+    preparedShape=shapeKey;
+  }
+  camera(t);buildPoints();updateBoat();camera(t);
+}
+buildTree();
+let last=performance.now(),clock=0,artVisible=true,frameDeadline=0;
+if(typeof IntersectionObserver!=='undefined')new IntersectionObserver(entries=>{artVisible=entries[0].isIntersecting;},{threshold:0}).observe(cv);
+function frame(now){
+  if(document.hidden||!artVisible){last=now;frameDeadline=now;requestAnimationFrame(frame);return;}
+  if(now<frameDeadline){requestAnimationFrame(frame);return;}
+  frameDeadline=now+1000/30-.5;
+  const dt=Math.min(0.05,(now-last)/1000);last=now;clock+=dt;
+  updateTimeline(dt);
+  if($('spin').checked&&!drag)yaw+=dt*0.22;
+  prepare();meetStep(dt);junction=frontStep(dt);flowStep(dt);render(clock);snd.update();
+  if(rec&&ph===2&&pt>13)stopRec();                   // a recording ends once the ring has begun to circulate
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
